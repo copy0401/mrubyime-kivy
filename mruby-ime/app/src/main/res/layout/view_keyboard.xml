@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Candidate bar: buffer(1.6) | candidates(5.4) | symbols(9.5) | punct(2.5) | hide(0.5) = 10 total -->
+    <LinearLayout
+        android:id="@+id/key_bar"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:background="#3A3A3C"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/key_buffer"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_margin="0.5dp"
+            android:layout_weight="2"
+            android:background="@drawable/candidate_bg"
+            android:ellipsize="start"
+            android:gravity="center_vertical|start"
+            android:includeFontPadding="false"
+            android:paddingStart="6dp"
+            android:paddingEnd="2dp"
+            android:singleLine="true"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:visibility="invisible" />
+
+        <com.example.mrubyime.StepScrollView
+            android:id="@+id/candidate_scroll"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="0.5dp"
+            android:layout_marginTop="0.5dp"
+            android:layout_marginBottom="0.5dp"
+            android:layout_weight="7"
+            android:fillViewport="false"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/candidate_container"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal" />
+        </com.example.mrubyime.StepScrollView>
+
+        <!-- English mode symbol container (19 keys, weight 9.5 -> each key weight 1 = width 0.5) -->
+        <LinearLayout
+            android:id="@+id/symbol_container"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="9.5"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="`" android:text="`" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="~" android:text="~" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag=";" android:text=";" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="=" android:text="=" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="|" android:text="|" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="&quot;" android:text="&quot;" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="$" android:text="$" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="%" android:text="%" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="^" android:text="^" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="&amp;" android:text="&amp;" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="&lt;" android:text="&lt;" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="&gt;" android:text="&gt;" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="{" android:text="{" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="}" android:text="}" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="," android:text="," />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="." android:text="." />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="'" android:text="'" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="[" android:text="[" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="]" android:text="]" />
+        </LinearLayout>
+
+        <!-- Chinese mode punctuation container (hidden as requested) -->
+        <LinearLayout
+            android:id="@+id/punct_container"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="," android:text="," />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="." android:text="." />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="'" android:text="'" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="[" android:text="[" />
+            <TextView style="@style/PunctKey" android:layout_width="0dp" android:layout_weight="1" android:tag="]" android:text="]" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/btn_hide_keyboard"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_margin="0.5dp"
+            android:layout_weight="1"
+            android:background="@drawable/key_bg"
+            android:contentDescription="隱藏鍵盤"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="▼"
+            android:textColor="#8E8E93"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- Key rows -->
+    <LinearLayout
+        android:id="@+id/key_rows"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <LinearLayout style="@style/KeyboardRow">
+            <TextView style="@style/KeyboardKey" android:tag="1" android:text="1" />
+            <TextView style="@style/KeyboardKey" android:tag="2" android:text="2" />
+            <TextView style="@style/KeyboardKey" android:tag="3" android:text="3" />
+            <TextView style="@style/KeyboardKey" android:tag="4" android:text="4" />
+            <TextView style="@style/KeyboardKey" android:tag="5" android:text="5" />
+            <TextView style="@style/KeyboardKey" android:tag="6" android:text="6" />
+            <TextView style="@style/KeyboardKey" android:tag="7" android:text="7" />
+            <TextView style="@style/KeyboardKey" android:tag="8" android:text="8" />
+            <TextView style="@style/KeyboardKey" android:tag="9" android:text="9" />
+            <TextView style="@style/KeyboardKey" android:tag="0" android:text="0" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/KeyboardRow">
+            <TextView style="@style/KeyboardKey" android:tag="q" android:text="q" />
+            <TextView style="@style/KeyboardKey" android:tag="w" android:text="w" />
+            <TextView style="@style/KeyboardKey" android:tag="e" android:text="e" />
+            <TextView style="@style/KeyboardKey" android:tag="r" android:text="r" />
+            <TextView style="@style/KeyboardKey" android:tag="t" android:text="t" />
+            <TextView style="@style/KeyboardKey" android:tag="y" android:text="y" />
+            <TextView style="@style/KeyboardKey" android:tag="u" android:text="u" />
+            <TextView style="@style/KeyboardKey" android:tag="i" android:text="i" />
+            <TextView style="@style/KeyboardKey" android:tag="o" android:text="o" />
+            <TextView style="@style/KeyboardKey" android:tag="p" android:text="p" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/KeyboardRow">
+            <TextView style="@style/KeyboardKey" android:tag="a" android:text="a" />
+            <TextView style="@style/KeyboardKey" android:tag="s" android:text="s" />
+            <TextView style="@style/KeyboardKey" android:tag="d" android:text="d" />
+            <TextView style="@style/KeyboardKey" android:tag="f" android:text="f" />
+            <TextView style="@style/KeyboardKey" android:tag="g" android:text="g" />
+            <TextView style="@style/KeyboardKey" android:tag="h" android:text="h" />
+            <TextView style="@style/KeyboardKey" android:tag="j" android:text="j" />
+            <TextView style="@style/KeyboardKey" android:tag="k" android:text="k" />
+            <TextView style="@style/KeyboardKey" android:tag="l" android:text="l" />
+            <TextView
+                android:id="@+id/key_backspace"
+                style="@style/KeyboardKey"
+                android:contentDescription="刪除"
+                android:text="⌫" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/KeyboardRow">
+            <TextView style="@style/KeyboardKey" android:tag="z" android:text="z" />
+            <TextView style="@style/KeyboardKey" android:tag="x" android:text="x" />
+            <TextView style="@style/KeyboardKey" android:tag="c" android:text="c" />
+            <TextView style="@style/KeyboardKey" android:tag="v" android:text="v" />
+            <TextView
+                android:id="@+id/key_space"
+                style="@style/KeyboardKey"
+                android:layout_weight="2"
+                android:contentDescription="空白鍵" />
+            <TextView style="@style/KeyboardKey" android:tag="b" android:text="b" />
+            <TextView style="@style/KeyboardKey" android:tag="n" android:text="n" />
+            <TextView style="@style/KeyboardKey" android:tag="m" android:text="m" />
+            <TextView
+                android:id="@+id/key_enter"
+                style="@style/KeyboardKey"
+                android:contentDescription="輸入"
+                android:text="⏎" />
+        </LinearLayout>
+
+        <!-- Row 5: Chinese mode = 1 space key; English mode = symbols, arrows, actions -->
+        <FrameLayout
+            android:id="@+id/symbol_action_row"
+            style="@style/KeyboardRow">
+
+            <!-- Chinese mode Row 5: 1 space key -->
+            <TextView
+                android:id="@+id/key_chinese_extra_space"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_margin="0.5dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text=""
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- English mode Row 5: symbols, arrows, actions -->
+            <LinearLayout
+                android:id="@+id/english_extra_row"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:visibility="gone">
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+                <TextView style="@style/KeyboardKey" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" />
+
+                <TextView android:id="@+id/key_arrow_up" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" android:contentDescription="方向鍵上" android:text="⬆" />
+                <TextView android:id="@+id/key_arrow_down" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" android:contentDescription="方向鍵下" android:text="⬇" />
+                <TextView android:id="@+id/key_arrow_left" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" android:contentDescription="方向鍵左" android:text="⬅" />
+                <TextView android:id="@+id/key_arrow_right" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" android:contentDescription="方向鍵右" android:text="➡" />
+
+                <TextView android:id="@+id/key_select_all" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" android:contentDescription="全選" android:text="^A" />
+                <TextView android:id="@+id/key_copy" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" android:contentDescription="複製" android:text="^C" />
+                <TextView android:id="@+id/key_paste" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_margin="0.5dp" android:gravity="center" android:includeFontPadding="false" android:textStyle="bold" android:contentDescription="貼上" android:text="^V" />
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
+</merge>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="@string/app_name"
+                 android:icon="@mipmap/ic_keyboard_logo"
+                 android:roundIcon="@mipmap/ic_keyboard_logo"
+                 android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+        <activity android:name=".MrubyimeSettingsActivity"
+                  android:exported="true"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+                  android:windowSoftInputMode="adjustResize"
+                  android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service android:name=".MrubyimeIME"
+                 android:label="@string/ime_name"
+                 android:permission="android.permission.BIND_INPUT_METHOD"
+                 android:exported="true">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data android:name="android.view.im" android:resource="@xml/method" />
+        </service>
+
+        <!-- content://com.example.mrubyime.layouts/<path> for external editors
+             (serves layouts/keyboard.rb; a tiny FileProvider replacement that
+             keeps the app free of androidx). -->
+        <provider
+            android:name=".LayoutFileProvider"
+            android:authorities="${applicationId}.layouts"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!-- Storage Access Framework: makes 小蝦米輸入法 appear in the system Files
+             app (DocumentsUI) so files/layouts/keyboard.rb can be edited there.
+             MANAGE_DOCUMENTS restricts access to the system (DocumentsUI). -->
+        <provider
+            android:name=".LayoutDocumentsProvider"
+            android:authorities="${applicationId}.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+    </application>
+</manifest>
