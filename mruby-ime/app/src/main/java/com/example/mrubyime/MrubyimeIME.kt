@@ -16,8 +16,34 @@ import android.view.KeyEvent
 import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.view.inputmethod.EditorInfo
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.PrintWriter
+import java.net.ServerSocket
+import java.net.Socket
 import kotlin.math.roundToInt
+
+interface KeyboardInteractionListener {
+    fun onKey(ch: Char)
+    fun onBackspace()
+    fun onSpace()
+    fun onEnter()
+    fun onToggleMode()
+    fun onHideKeyboard()
+    fun onToggleHideKeyRows()
+    fun onCommitBuffer()
+    fun onCommitInlineComposing()
+    fun onCandidateSelected(index: Int, candidate: String)
+    fun onMoveCursor(forward: Boolean)
+    fun onDpad(keyCode: Int)
+    fun onSelectAll()
+    fun onCopy()
+    fun onPaste()
+    fun onKeyCombo(spec: String)
+    fun onCommitText(text: String)
+}
 
 class MrubyimeIME : InputMethodService() {
     companion object {
@@ -114,6 +140,7 @@ class MrubyimeIME : InputMethodService() {
     private var selkeys: String = "0123456789"
     private var selectedCandidateIndex: Int = 0
     private var isEnglishMode: Boolean = false
+    private val kivyBridge = KivyBridge(this)
 
     // Active .cin table and the metadata derived from it. Everything below is
     // table-driven so 注音/倉頡/行列/大易/五筆… do not need Kotlin changes.
@@ -125,10 +152,6 @@ class MrubyimeIME : InputMethodService() {
     private var dictSignature: String = ""
 
     private val engine: MrubyimeEngineDelegate = MrubyimeEngineDelegateImpl()
-    private lateinit var keyboardView: KeyboardView
-
-    /** Signature of the layout source the current view was built from (see [reloadLayoutIfChanged]). */
-    private var layoutSignature: String? = null
 
     /**
      * True once the background engine build finished. Every path that touches
@@ -168,7 +191,6 @@ class MrubyimeIME : InputMethodService() {
 
     /** Live reaction to the settings toggle, even while the keyboard is open. */
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (!::keyboardView.isInitialized) return@OnSharedPreferenceChangeListener
         when (key) {
             KEY_HIDE_KEY_ROWS -> applyKeyboardSize()
             KEY_BUFFER_WIDTH_WEIGHT,
@@ -183,7 +205,6 @@ class MrubyimeIME : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         Log.i("MrubyimeIME", "onCreate")
-        FontStore.ensureDirs(this)
         try {
             // Cheap id + signature only: the 1.7 MB table itself is read on the
             // engine-load thread (see startEngineLoad), so service creation does
@@ -194,6 +215,7 @@ class MrubyimeIME : InputMethodService() {
         } catch (e: Throwable) {
             Log.e("MrubyimeIME", "Error initializing IME", e)
         }
+        kivyBridge.start()
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
             .registerOnSharedPreferenceChangeListener(prefsListener)
     }
@@ -274,17 +296,6 @@ class MrubyimeIME : InputMethodService() {
                 "entries=${engine.entryCount()} max=$dictMaxCode selkeys=$selkeys"
         )
         logLayoutDiagnostics()
-        if (::keyboardView.isInitialized) {
-            // The initial view used the build-time JSON snapshot because the
-            // engine was still loading; rebuild it from the runtime DSL (and
-            // apply a user layout that was skipped) now that it is ready.
-            keyboardView.setDictLabels(dictKeyLabels())
-            keyboardView.setLayout(loadKeyboardLayout())
-            applyThemePref()
-            applyKeyboardSize()
-            applyBufferWidthWeight()
-            updateBufferAndCandidatesView()
-        }
     }
 
     /**
@@ -324,10 +335,6 @@ class MrubyimeIME : InputMethodService() {
         EngineCache.record(dictId, dictSignature)
         candidates = emptyArray()
         selectedCandidateIndex = 0
-        if (::keyboardView.isInitialized) {
-            keyboardView.setDictLabels(dictKeyLabels())
-            updateBufferAndCandidatesView()
-        }
         Log.i("MrubyimeIME", "dictionary switched to id=$dictId name=$dictName codes=${engine.getTableSize()}")
     }
 
@@ -364,13 +371,13 @@ class MrubyimeIME : InputMethodService() {
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
-    private val interactionListener = object : KeyboardView.KeyboardInteractionListener {
+    private val interactionListener = object : KeyboardInteractionListener {
         override fun onKey(ch: Char) = onKeyPressed(ch)
         override fun onBackspace() = onBackspacePressed()
         override fun onSpace() = onSpacePressed()
         override fun onEnter() = onEnterPressed()
         override fun onToggleMode() {
-            // Qualify explicitly: KeyboardView has same-named properties, and an
+            // Qualify explicitly: MrubyimeIME has same-named properties, and an
             // unqualified assignment would silently target the view instead.
             this@MrubyimeIME.isEnglishMode = !this@MrubyimeIME.isEnglishMode
             Log.d("MrubyimeIME", "onToggleMode executed! isEnglishMode=$isEnglishMode")
@@ -575,30 +582,17 @@ class MrubyimeIME : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
-        keyboardView = KeyboardView(this, layout = loadKeyboardLayout())
-        keyboardView.listener = interactionListener
-        keyboardView.setDictLabels(dictKeyLabels())
-        applyThemePref()
-        applyKeyboardSize()
-        applyBufferWidthWeight()
-        if (engineReady) updateBufferAndCandidatesView() else showEngineLoadingPlaceholder()
-        layoutSignature = KeyboardLayoutFiles.sourceSignature(this)
-        return keyboardView
+        // Kivy keyboard view will be set via JNI/socket bridge.
+        // Return an empty view for now; the Kivy surface will be attached separately.
+        return FrameLayout(this)
     }
 
     /**
      * The engine is still parsing the `.cin` on its background thread, so the
-     * keyboard is already usable for layout but typing is not. Show a hint in
-     * the code box instead of leaving it blank.
+     * keyboard is already usable for layout but typing is not.
      */
     private fun showEngineLoadingPlaceholder() {
-        if (!::keyboardView.isInitialized) return
-        keyboardView.isEnglishMode = isEnglishMode
-        keyboardView.bufferText = "…"
-        keyboardView.candidates = emptyArray()
-        keyboardView.selectedCandidateIndex = 0
-        keyboardView.selkeys = selkeys
-        keyboardView.render()
+        // Placeholder handled by Kivy view layer.
     }
 
     /**
@@ -607,21 +601,7 @@ class MrubyimeIME : InputMethodService() {
      * rebuild the view tree only when the file actually changed.
      */
     private fun reloadLayoutIfChanged() {
-        // Import an edit made to the Android/data mirror before comparing signatures.
-        KeyboardLayoutFiles.sync(this)
-        val signature = KeyboardLayoutFiles.sourceSignature(this)
-        if (signature == layoutSignature) return
-        layoutSignature = signature
-        Log.i(
-            "MrubyimeIME",
-            "keyboard layout changed -> ${KeyboardLayoutFiles.describe(this)}"
-        )
-        keyboardView.setLayout(loadKeyboardLayout())
-        keyboardView.setDictLabels(dictKeyLabels())
-        applyThemePref()
-        applyKeyboardSize()
-        applyBufferWidthWeight()
-        updateBufferAndCandidatesView()
+        // Layout handled by Kivy view layer.
     }
 
     /**
@@ -660,55 +640,22 @@ class MrubyimeIME : InputMethodService() {
     }
 
     /** Runtime DSL first (mruby), then the build-time JSON asset, then emergency. */
-    private fun loadKeyboardLayout(): KeyboardLayout {
-        // Same rule as engine.rb: refresh an untouched seed, so an APK update
-        // actually ships the new layout instead of last release's seeded copy.
-        KeyboardLayoutFiles.exportBuiltin(this)
-        return KeyboardLayoutRepository.load(this, if (engineReady) engine else null, layoutContext())
+    private fun loadKeyboardLayout(): Any? {
+        // Layout handled by Kivy view layer.
+        return null
     }
 
     /** Keeps a broken DSL visible in logcat without needing a text field. */
     private fun logLayoutDiagnostics() {
         if (!engineReady) return
-        try {
-            val json = engine.layoutSerialized(layoutContext().toByteArray(Charsets.UTF_8))
-            val parsed = KeyboardLayoutParser.parseOrNull(json)
-            Log.i(
-                "MrubyimeIME",
-                "layout JSON bytes=${json.length} parsed=${parsed != null} pages=${parsed?.pages?.map { it.name }}"
-            )
-            if (parsed == null && json.isNotEmpty()) {
-                Log.w("MrubyimeIME", "layout JSON head=${json.take(240)}")
-            }
-        } catch (t: Throwable) {
-            Log.e("MrubyimeIME", "layout diagnostics failed", t)
-        }
-        try {
-            val source = KeyboardLayoutFiles.keyboardSource(this)
-            if (source == null) {
-                Log.i("MrubyimeIME", "layout source=builtin")
-            } else {
-                val result = KeyboardLayoutRepository.validateSourceDirect(source, layoutContext())
-                Log.i(
-                    "MrubyimeIME",
-                    "layout source=${KeyboardLayoutFiles.keyboardFile(this).absolutePath} " +
-                        "parsed=${result.ok} pages=${result.layout?.pages?.map { it.name }}"
-                )
-                if (!result.ok) {
-                    Log.e("MrubyimeIME", "user layout error: ${result.error}")
-                }
-            }
-        } catch (t: Throwable) {
-            Log.e("MrubyimeIME", "user layout diagnostics failed", t)
-        }
+        // Layout diagnostics handled by Kivy view layer.
     }
 
     /**
      * The e-ink friendly Light Mode. Dark mode removed.
      */
     private fun applyThemePref() {
-        if (!::keyboardView.isInitialized) return
-        applyNavigationBarTheme()
+        // Handled by Kivy view layer.
     }
 
     /**
@@ -765,8 +712,8 @@ class MrubyimeIME : InputMethodService() {
         engine.reset()
         candidates = emptyArray()
         selectedCandidateIndex = 0
-        if (::keyboardView.isInitialized) updateBufferAndCandidatesView()
         if (hadBuffer) Log.i("MrubyimeIME", "composition cleared on hide")
+        updateBufferAndCandidatesView()
     }
 
     /**
@@ -787,15 +734,11 @@ class MrubyimeIME : InputMethodService() {
     override fun onStartInputView(info: android.view.inputmethod.EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         applyNavigationBarTheme()
-        // The table may have been changed while the input view did not exist yet
-        // (Settings is a separate activity and the prefs listener bails out until
-        // keyboardView is built), or by an external editor writing active.cin.
         if (DictionaryRepository.activeId(this) != dictId ||
             DictionaryRepository.signature(this) != dictSignature
         ) {
             reloadDictionary()
         }
-        if (::keyboardView.isInitialized) reloadLayoutIfChanged()
     }
 
     private fun keyRowsHidden(): Boolean =
@@ -810,8 +753,7 @@ class MrubyimeIME : InputMethodService() {
     }
 
     private fun applyBufferWidthWeight() {
-        if (!::keyboardView.isInitialized) return
-        keyboardView.bufferWidthWeight = bufferWidthWeightRatio()
+        // Handled by Kivy view layer.
     }
 
     /**
@@ -820,18 +762,7 @@ class MrubyimeIME : InputMethodService() {
      * the key rows) and applies `padding left/right/bottom:`.
      */
     private fun applyKeyboardSize() {
-        if (!::keyboardView.isInitialized) return
-        val hidden = keyRowsHidden()
-        keyboardView.hideKeyRows = hidden
-        val totalHeightPx = keyboardView.layoutHeightPx(screenHeightPx())
-        keyboardView.applyLayoutMetrics(screenHeightPx())
-        Log.d("MrubyimeIME", "hideKeyRows=$hidden layoutHeightPx=$totalHeightPx")
-        val lp = keyboardView.layoutParams
-        if (lp != null && lp.height != totalHeightPx) {
-            lp.height = totalHeightPx
-            keyboardView.layoutParams = lp
-        }
-        keyboardView.requestLayout()
+        // Handled by Kivy view layer.
     }
 
     /** Full panel height (system bars included), so 40% means 40% of the screen. */
@@ -1058,16 +989,9 @@ class MrubyimeIME : InputMethodService() {
             .getInt(KEY_INLINE_COMPOSING_MODE, DEFAULT_INLINE_MODE)
 
     private fun updateBufferAndCandidatesView() {
-        if (!::keyboardView.isInitialized) return
         if (!engineReady) return
-        keyboardView.isEnglishMode = isEnglishMode
         val buf = engine.getBuffer()
-        keyboardView.bufferText = buf
-        keyboardView.candidates = candidates
-        keyboardView.selectedCandidateIndex = selectedCandidateIndex
-        keyboardView.selkeys = selkeys
-        keyboardView.render()
-
+        kivyBridge.sendCandidates(buf, candidates.toList())
         updateInlineComposingText(buf)
     }
 
@@ -1146,13 +1070,11 @@ class MrubyimeIME : InputMethodService() {
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP -> {
                 if (!isEnglishMode && candidates.isNotEmpty()) {
-                    keyboardView.stepCandidatePage(forward = false)
                     return true
                 }
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
                 if (!isEnglishMode && candidates.isNotEmpty()) {
-                    keyboardView.stepCandidatePage(forward = true)
                     return true
                 }
             }
@@ -1234,8 +1156,93 @@ class MrubyimeIME : InputMethodService() {
 
     /** Mirrors the physical modifier / caps-lock state onto the status lamps. */
     private fun updateHardwareModifiers(event: KeyEvent) {
-        if (!::keyboardView.isInitialized) return
-        keyboardView.hardwareModifiers = event.metaState
-        keyboardView.capsLockOn = event.isCapsLockOn
+        // Handled by Kivy view layer.
+    }
+
+    /** Public API for Kivy bridge. */
+    fun onKeyPressedPublic(ch: Char) = onKeyPressed(ch)
+    fun onBackspacePressedPublic() = onBackspacePressed()
+    fun onSpacePressedPublic() = onSpacePressed()
+    fun onEnterPressedPublic() = onEnterPressed()
+    fun toggleModePublic() { isEnglishMode = !isEnglishMode; applyModeSwitch() }
+    fun clearCompositionAndHide() { clearCompositionBeforeHide(); requestHideSelf(0) }
+}
+
+/**
+ * Socket bridge between Kotlin IME service and Python/Kivy UI.
+ * 
+ * Protocol: JSON over TCP localhost socket.
+ * Kotlin -> Python: {"type":"candidates","candidates":["word1","word2"],"buffer":"code"}
+ * Python -> Kotlin: {"type":"key","char":"a"} or {"type":"backspace"} etc.
+ */
+class KivyBridge(private val ime: MrubyimeIME) {
+    private var serverSocket: ServerSocket? = null
+    private var clientSocket: Socket? = null
+    private var writer: PrintWriter? = null
+    private var serverThread: Thread? = null
+    private val PORT = 19876
+
+    fun start() {
+        serverThread = Thread {
+            try {
+                serverSocket = ServerSocket(PORT, 1, java.net.InetAddress.getByName("127.0.0.1"))
+                Log.i("MrubyimeJNI", "KivyBridge server listening on port $PORT")
+                while (!Thread.currentThread().isInterrupted) {
+                    val client = serverSocket!!.accept()
+                    clientSocket = client
+                    writer = PrintWriter(client.outputStream, true)
+                    Log.i("MrubyimeJNI", "Kivy client connected")
+                    // Read commands from Python
+                    val reader = BufferedReader(InputStreamReader(client.inputStream))
+                    while (true) {
+                        val line = reader.readLine() ?: break
+                        handleCommand(line)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MrubyimeJNI", "KivyBridge error", e)
+            }
+        }
+        serverThread?.start()
+    }
+
+    private fun handleCommand(line: String) {
+        try {
+            val json = org.json.JSONObject(line)
+            val type = json.getString("type")
+            when (type) {
+                "key" -> {
+                    val ch = json.getString("char").first()
+                    ime.onKeyPressedPublic(ch)
+                }
+                "backspace" -> ime.onBackspacePressedPublic()
+                "space" -> ime.onSpacePressedPublic()
+                "enter" -> ime.onEnterPressedPublic()
+                "toggle_mode" -> ime.toggleModePublic()
+                "hide" -> ime.clearCompositionAndHide()
+            }
+        } catch (e: Exception) {
+            Log.e("MrubyimeJNI", "Failed to parse command: $line", e)
+        }
+    }
+
+    fun sendCandidates(buffer: String, candidates: List<String>) {
+        val writer = this.writer ?: return
+        val json = org.json.JSONObject()
+        json.put("type", "candidates")
+        json.put("buffer", buffer)
+        json.put("candidates", org.json.JSONArray(candidates))
+        writer.println(json.toString())
+        writer.flush()
+    }
+
+    fun stop() {
+        serverThread?.interrupt()
+        serverThread = null
+        writer = null
+        clientSocket?.close()
+        clientSocket = null
+        serverSocket?.close()
+        serverSocket = null
     }
 }

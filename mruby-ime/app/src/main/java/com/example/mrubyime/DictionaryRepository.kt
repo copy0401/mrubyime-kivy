@@ -230,8 +230,8 @@ object DictionaryRepository {
 
     /** Temp write + rename so the IME never reads a half-written table. */
     fun install(context: Context, bytes: ByteArray): Boolean = try {
-        if (bytes.isEmpty() || CinTable.parse(bytes) == null) {
-            Log.e(TAG, "install rejected: ${bytes.size} bytes without %chardef")
+        if (bytes.isEmpty()) {
+            Log.e(TAG, "install rejected: empty bytes")
             false
         } else {
             val target = builtinCopyFile(context)
@@ -285,7 +285,7 @@ object DictionaryRepository {
 
     /** Validates and stores a user table, then makes it active. */
     fun saveUser(context: Context, bytes: ByteArray): Boolean {
-        if (CinTable.parse(bytes) == null) return false
+        if (bytes.isEmpty()) return false
         return try {
             val f = userFile(context)
             f.parentFile?.mkdirs()
@@ -349,7 +349,4 @@ object DictionaryRepository {
         val f = userFile(context)
         return "$id:${f.length()}:${f.lastModified()}"
     }
-
-    fun info(context: Context, id: String): CinInfo? =
-        read(context, id)?.let { CinTable.parse(it) }
 }

@@ -45,11 +45,8 @@ object MrubyimeJNI {
     /**
      * Compiles an imported DSL in a throwaway sandbox and returns the IR JSON.
      *
-     * On failure the result starts with [KeyboardLayoutRepository.LAYOUT_ERROR_PREFIX]
-     * (`"\u0001"`) followed by a human-readable message that includes
-     * `line N:C:` positions for syntax errors. Use
-     * [KeyboardLayoutRepository.validateSource] / `validateSourceDirect` instead
-     * of calling this directly.
+     * On failure the result starts with `"\u0001"` followed by a human-readable
+     * message that includes `line N:C:` positions for syntax errors.
      */
     external fun layoutFromSourceSerialized(sourceBytes: ByteArray, ctxBytes: ByteArray): String
 }
