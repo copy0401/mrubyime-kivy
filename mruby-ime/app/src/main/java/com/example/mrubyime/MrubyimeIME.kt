@@ -50,6 +50,10 @@ class MrubyimeIME : InputMethodService() {
     companion object {
         const val PREFS_NAME = "mrubyime_settings"
 
+        /** 「Kivy 前端」: host the python-for-android/Kivy UI in the input view. */
+        const val KEY_KIVY_FRONTEND = "kivy_frontend"
+        const val DEFAULT_KIVY_FRONTEND = true
+
         const val KEY_HIDE_KEY_ROWS = "hide_virtual_keyboard"
 
         const val KEY_CANDIDATE_BAR_HEIGHT = "candidate_bar_height"
@@ -206,6 +210,17 @@ class MrubyimeIME : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         Log.i("MrubyimeIME", "onCreate")
+        // The Kivy bridge writes tiny JSON lines to a localhost socket from the
+        // main thread (updateBufferAndCandidatesView). Android's StrictMode
+        // turns that into a fatal NetworkOnMainThreadException, which would
+        // silently drop every candidate update — the Kivy UI would never see a
+        // single character. The write is a buffered pipe, so it can't block.
+        android.os.StrictMode.setThreadPolicy(
+            android.os.StrictMode.ThreadPolicy.Builder()
+                .permitNetwork()
+                .penaltyLog()
+                .build()
+        )
         try {
             // Cheap id + signature only: the 1.7 MB table itself is read on the
             // engine-load thread (see startEngineLoad), so service creation does
@@ -367,6 +382,8 @@ class MrubyimeIME : InputMethodService() {
         serviceDestroyed = true
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
             .unregisterOnSharedPreferenceChangeListener(prefsListener)
+        kivyHost?.destroy()
+        kivyHost = null
         super.onDestroy()
     }
 
@@ -582,11 +599,26 @@ class MrubyimeIME : InputMethodService() {
         }
     }
 
+    /**
+     * Hosts the python-for-android/Kivy runtime inside this IME: its input
+     * view is where the SDL surface is dropped, so the Kivy keyboard renders
+     * full-window in the IME window without an overlay permission.
+     */
+    private var kivyHost: KivyImeHost? = null
+
     override fun onCreateInputView(): View {
-        // Kivy keyboard view will be set via JNI/socket bridge.
-        // Return an empty view for now; the Kivy surface will be attached separately.
+        if (useKivyFrontend()) {
+            val host = KivyImeHost(this)
+            kivyHost = host
+            return host.createInputView()
+        }
         return FrameLayout(this)
     }
+
+    /** 「Kivy 前端」 preference (default on); off falls back to the DSL renderer. */
+    private fun useKivyFrontend(): Boolean =
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getBoolean(KEY_KIVY_FRONTEND, DEFAULT_KIVY_FRONTEND)
 
     /**
      * The engine is still parsing the `.cin` on its background thread, so the
@@ -729,11 +761,13 @@ class MrubyimeIME : InputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         clearCompositionBeforeHide()
+        kivyHost?.onStopInput()
         super.onFinishInputView(finishingInput)
     }
 
     override fun onStartInputView(info: android.view.inputmethod.EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        kivyHost?.onStartInput()
         applyNavigationBarTheme()
         if (DictionaryRepository.activeId(this) != dictId ||
             DictionaryRepository.signature(this) != dictSignature

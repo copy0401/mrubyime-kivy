@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# Rebuild the python bundle asset (assets/private.tar) from
+# app/src/main/python/**, refresh its sha1 in res/values/strings.xml, rebuild
+# the APK and install it -- without a python-for-android (buildozer) run.
+#
+# Use this for ANY Python-only change (kivy_ime/keyboard.py layout, theme
+# colours, gestures, chips...). It is the fast path: ~10 s instead of the
+# ~2 min full buildozer rebuild.
+#
+#   ./sync_python.sh            # build + install, keep app data
+#
+# IMPORTANT: p4a's private.tar is a **gzip-compressed** USTAR tar (its name
+# just lacks the .gz). The device unpacks it with org.kamranzafar.jtar wrapped
+# in a GZIPInputStream (AssetExtract.extractTar). So the replacement must keep
+# p4a's exact entry set, member types (DIR vs REG) and the gzip wrapper:
+#   - pax headers      -> jtar mis-parses the archive
+#   - a directory written as a zero-length REG file -> the next entry under it
+#     fails to extract ("could not open <path>")
+#   - no gzip          -> GZIPInputStream throws, nothing is extracted
+# In all three cases the app cannot import kivy_ime and the IME surface stays
+# black (the SDL surface exists, Kivy never ran).
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$here"
+
+APP="$here/app/src/main/python"
+P4A="$here/.buildozer/android/app"          # p4a staging dir (sitecustomize.py)
+P4A_TAR="$here/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists/mrubyime_kivy/src/main/assets/private.tar"
+TAR="$here/app/src/main/assets/private.tar"
+RES="$here/app/src/main/res/values/strings.xml"
+
+if [ ! -f "$P4A/sitecustomize.py" ]; then
+    echo "missing $P4A/sitecustomize.py -- run ./buildozer_apk.sh debug once first" >&2
+    exit 1
+fi
+
+sha1="$(mktemp)"; trap 'rm -f "$sha1"' EXIT
+
+python3 - "$APP" "$P4A" "$P4A_TAR" "$TAR" "$sha1" <<'PY'
+import hashlib, os, py_compile, shutil, sys, tarfile, tempfile, io
+
+app, p4a, base_tar, out_tar, sha1_file = sys.argv[1:6]
+
+# p4a's own tar is the reference: same entries, same types, USTAR, no pax.
+base = tarfile.open(base_tar)
+members = base.getmembers()
+data = {m.name: (base.extractfile(m).read() if m.isfile() else b"")
+        for m in members}
+base.close()
+
+# Compile the tree the way p4a does (PYTHONOPTIMIZE=2 -> -OO).
+tmp = tempfile.mkdtemp()
+build = os.path.join(tmp, "build")
+os.makedirs(build)
+for rel in ["main.py", "sitecustomize.py",
+            "kivy_ime/__init__.py", "kivy_ime/bridge.py", "kivy_ime/keyboard.py"]:
+    source = p4a if rel == "sitecustomize.py" else app
+    dst = os.path.join(build, rel)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copy(os.path.join(source, rel), dst)
+    py_compile.compile(dst, cfile=dst + "c", doraise=True, optimize=2)
+
+compiled = {rel: os.path.join(build, rel + "c") for rel in
+            ["main.py", "sitecustomize.py",
+             "kivy_ime/__init__.py", "kivy_ime/bridge.py", "kivy_ime/keyboard.py"]}
+
+replacements = {
+    "main.pyc": "main.py",
+    "sitecustomize.pyc": "sitecustomize.py",
+    "kivy_ime/__init__.pyc": "kivy_ime/__init__.py",
+    "kivy_ime/bridge.pyc": "kivy_ime/bridge.py",
+    "kivy_ime/keyboard.pyc": "kivy_ime/keyboard.py",
+    "__pycache__/main.cpython-314.pyc": "main.py",
+    "kivy_ime/__pycache__/__init__.cpython-314.pyc": "kivy_ime/__init__.py",
+    "kivy_ime/__pycache__/bridge.cpython-314.pyc": "kivy_ime/bridge.py",
+    "kivy_ime/__pycache__/keyboard.cpython-314.pyc": "kivy_ime/keyboard.py",
+}
+
+changed = []
+for member in members:
+    rel = replacements.get(member.name)
+    if rel is None or rel not in compiled:
+        continue                      # keep p4a's entry untouched
+    with open(compiled[rel], "rb") as fh:
+        payload = fh.read()
+    data[member.name] = payload
+    member.size = len(payload)        # type/mode/owner stay as p4a wrote them
+    changed.append(member.name)
+
+out = tarfile.open(out_tar, "w:gz", format=tarfile.USTAR_FORMAT)
+for member in members:
+    if member.isdir():
+        out.addfile(member)
+    else:
+        out.addfile(member, io.BytesIO(data[member.name]))
+out.close()
+
+with open(sha1_file, "w") as fh:
+    fh.write(hashlib.sha1(open(out_tar, "rb").read()).hexdigest())
+print("replaced: %s" % ", ".join(sorted(set(changed))))
+PY
+
+SHA="$(cat "$sha1")"
+sed -i "s|<string name=\"private_version\">[0-9a-f]*</string>|<string name=\"private_version\">${SHA}</string>|" "$RES"
+# Gradle reruns the asset-merge task only if the input is newer than the output.
+touch "$TAR"
+echo "private_version=${SHA}"
+
+JAVA_HOME=/opt/android-studio/jbr ./gradlew assembleRelease --offline
+adb install -r app/build/outputs/apk/release/app-release.apk
+echo "installed"

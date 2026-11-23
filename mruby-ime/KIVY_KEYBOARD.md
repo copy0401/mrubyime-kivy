@@ -1,0 +1,286 @@
+# KIVY_KEYBOARD.md — How to adjust the Kivy keyboard layout / theme / gestures
+
+**Target audience:** anyone who wants to change the on-screen keyboard (layout,
+colours, sizes, gestures, sounds) without touching the Kotlin mruby engine.
+
+The Kivy frontend is in `app/src/main/python/kivy_ime/`.  It replaces the old
+Kotlin `KeyboardView`/`KeyboardRenderer` entirely; the Kotlin `InputMethodService`
+still runs the mruby engine and JNI bridge.
+
+---
+
+## Fast iteration cycle (no APK rebuild)
+
+1. Edit the Python files in `app/src/main/python/kivy_ime/`
+2. Run on the desktop (8 s) to see the look:
+   ```bash
+   ./kivy-venv/bin/python /tmp/opencode/verify_fixes.py
+   # or
+   ./kivy-venv/bin/python /tmp/opencode/kivy_smoke.py
+   ```
+3. When it looks right, push to the phone (15 – 30 s):
+   ```bash
+   ./sync_python.sh          # rebuilds assets/private.tar, bumps sha1, gradle, install
+   ```
+
+---
+
+## Files you will edit
+
+| File | What it controls |
+|------|------------------|
+| `app/src/main/python/kivy_ime/keyboard.py` | **All visual/layout logic** — rows, keys, chips, colours, gestures, sizes |
+| `app/src/main/python/kivy_ime/bridge.py` | Socket protocol (rarely) |
+| `app/src/main/python/main.py` | Entry point (once) |
+
+---
+
+## Layout & keys (`keyboard.py`)
+
+### 12-column grid
+
+```python
+COLUMNS = 12
+gap_h = dp(2)
+gap_v = dp(2)
+outer = dp(3)
+pad = dp(3)
+bar_h = dp(48)
+body_h = dp(240)
+```
+
+Each row in `ROWS` is a list of key specs.  A spec is a dict with:
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `label` | str | visible text on the key |
+| `value` | str/None | what is sent to the engine (None = use label) |
+| `action` | str | `"code"`, `"backspace"`, `"space"`, `"enter"`, `"toggle_mode"`, `"hide"`, `"key_event"`, `"clipboard"`, `"combo"`, `"datetime"`, `"weekday"`, `"noop"` |
+| `sub` | str | top-right corner label (swipe-up symbol) |
+| `gestures` | dict | `"up"`, `"down"`, `"left"`, `"right"` → action spec |
+| `repeat` | bool | long-press repeat (backspace) |
+| `long_press` | str/action | long-press action |
+| `span` | int | 1-12 columns |
+| `font_size` | sp | overrides default (sp) |
+
+**Example:** the backspace key
+```python
+{"label": "⬅", "value": None, "action": "backspace", "repeat": True}
+```
+
+**Swipe-up on the `1` key:**
+```python
+{"label": "1", "value": "1", "sub": "!", "up": "!"}
+```
+
+### Five rows (built-in)
+
+```python
+ROW_1 = [{"label": d, "value": d, "sub": s, "up": s}
+         for d, s in zip("1234567890-=", "!@#$%^&*()_+")]
+ROW_2 = [{"label": k.upper(), "value": k, "sub": s, "up": s}
+         for k, s in zip("qwertyuiop[]", "          {}")]
+ROW_3 = [{"label": k.upper(), "value": k, "sub": s, "up": s}
+         for k, s in zip("asdfghjkl;'\\", '         :\\"|')]
+ROW_4 = [{"label": k.upper(), "value": k, "sub": s, "up": s}
+         for k, s in zip("zxcvbnm,./`", "       <>?~")] + \
+        [{"label": "⬅", "value": None, "action": "backspace", "repeat": True}]
+ROW_5 = [
+    {"label": "中", "action": "toggle_mode", "span": 2},
+    {"label": "", "action": "space", "span": 8,
+     "gestures": {"down": "toggle_mode", "left": "cursor_left",
+                  "right": "cursor_right"}},
+    {"label": "⏎", "action": "enter", "span": 2,
+     "gestures": {"up": {"action": "combo", "value": "shift+enter"}}}
+]
+```
+
+The English page uses `ENGLISH_BAR` (12 single-unit action keys) and the same
+letter rows without `transform: upper`.
+
+---
+
+## Colours (HHKB light theme)
+
+```python
+INK = (0.0, 0.0, 0.0, 1.0)          # text
+MUTED = (0.4, 0.4, 0.4, 1.0)        # sub-label
+BAR_BG = (245/255,)*3 + (1,)        # candidate bar
+KEY_BG = (224/255,)*3 + (1,)        # key plate
+KEY_PRESSED = (204/255,)*3 + (1,)   # pressed plate
+SEAM = (153/255,)*3 + (1,)          # 1 dp seam lines
+CHIP_SELECTED = (204/255,)*3 + (1,) # selected chip
+CLEAR = (1, 1, 1, 0)                # transparent
+```
+
+Changing these constants recolours the whole keyboard instantly.
+
+---
+
+## Candidate chips
+
+```python
+class Chip(Widget):
+    selected = BooleanProperty(False)
+```
+
+* `selected=True`  → plate = `CHIP_SELECTED` (#CCCCCC), text **bold**
+* `selected=False` → plate = `CLEAR` (transparent), text normal
+
+Only the active chip is `selected=True`.  The placeholder (empty candidate row)
+is `Chip("", selected=False)`.
+
+---
+
+## Gestures
+
+```python
+key = Key(..., gestures={"up": "!", "down": "toggle_mode", ...})
+```
+
+| Direction | Example | What it does |
+|-----------|---------|--------------|
+| `"up"` | `"!"` | commits `!` |
+| `"down"` | `"toggle_mode"` | switches Chinese/English |
+| `"left"` | `"cursor_left"` | moves text cursor |
+| `"right"` | `"cursor_right"` | moves text cursor |
+
+A gesture fires **instead of** the normal tap action when the finger moves
+> 16 dp in that direction.
+
+---
+
+## Key sounds
+
+```python
+class SoundPlayer:
+    PATHS = ("/system/media/audio/ui/KeypressStandard.ogg", ...)
+```
+
+`SoundPlayer.click()` is called on every `on_touch_down`.  Volume = 0.6.
+
+---
+
+## Changing sizes / paddings
+
+Edit the constants at the top of `ImeKeyboard.__init__`:
+
+```python
+gap_h = dp(2)      # horizontal gap between keys
+gap_v = dp(2)      # vertical gap between rows
+outer = dp(3)      # outer margin
+pad = dp(3)        # window padding
+bar_h = dp(48)     # candidate bar height
+body_h = dp(240)   # key rows total height
+```
+
+Row height is computed automatically:
+```python
+row_h = (body_h - 2*outer - gap_v*(len(ROWS)-1)) / len(ROWS)
+```
+
+---
+
+## Fonts
+
+CJK glyphs need a system font.  The loader tries these in order:
+
+```
+/system/fonts/NotoSansCJK-Regular.ttc
+/system/fonts/NotoSansCJKsc-Regular.otf
+...
+/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc  # desktop
+```
+
+If none is found, it falls back to Roboto (no CJK → tofu).  Change
+`FONT_NAME` or add a path to `_CJK_CANDIDATES`.
+
+---
+
+## Actions sent to the Kotlin engine
+
+| `action` | Sent JSON | Kotlin handler |
+|----------|-----------|----------------|
+| `"code"` | `{"type":"key","char":"x"}` | `onKeyPressedPublic` |
+| `"backspace"` | `{"type":"backspace"}` | `onBackspacePressedPublic` |
+| `"space"` | `{"type":"space"}` | `onSpacePressedPublic` |
+| `"enter"` | `{"type":"enter"}` | `onEnterPressedPublic` |
+| `"toggle_mode"` | `{"type":"toggle_mode"}` | `toggleModePublic` |
+| `"hide"` | `{"type":"hide"}` | `clearCompositionAndHide` |
+| `"key_event"` | `{"type":"key_event","value":"up"}` | `onKivyAction` |
+| `"clipboard"` | `{"type":"clipboard","value":"copy"}` | `onKivyAction` |
+| `"combo"` | `{"type":"combo","value":"ctrl+c"}` | `onKivyAction` |
+| `"datetime"` | `{"type":"datetime","value":"yyyy-MM-dd"}` | `onKivyAction` |
+| `"weekday"` | `{"type":"weekday"}` | `onKivyAction` |
+
+---
+
+## Fast preview on desktop (no phone)
+
+```bash
+./kivy-venv/bin/python /tmp/opencode/verify_fixes.py
+# 8 s, runs the widget tree headless, prints all 4 UI fixes
+
+./kivy-venv/bin/python /tmp/opencode/kivy_smoke.py
+# 10 s, writes kivy_zh.png / kivy_en.png
+```
+
+Screenshots land in `/tmp/opencode/`.
+
+---
+
+## Android build & install (only when you need the real IME)
+
+```bash
+./sync_python.sh          # 15–30 s: private.tar → sha1 → gradle → install
+```
+
+What it does:
+1. Compiles the 5 Python files with `-OO`
+2. Replaces the 5 `.pyc` entries **in-place** inside `assets/private.tar`
+   (keeps p4a's exact member set, DIR types, USTAR format, gzip wrapper)
+3. Updates `private_version` in `res/values/strings.xml`
+4. `gradlew assembleRelease --offline` (≈ 1 s incremental)
+5. `adb install -r` (21 MB APK, 1.3 s)
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Keyboard area all black | `private.tar` not gzipped / DIR entries wrong | `./sync_python.sh` rebuilds it correctly |
+| `Entrypoint not found (.py)` | `private.tar` not extracted | Check logcat: `I python: Unpacking private assets` |
+| `ClassNotFound: org.renpy.android.Hardware` | missing Java shim | `org/renpy/android/Hardware.java` must exist |
+| Colours wrong / black keys | theme constants | check `BAR_BG`, `KEY_BG`, `SEAM` |
+| Chips all grey / no selection | `selected` binding | `Chip.selected` BooleanProperty + `bold=selected` |
+| Backspace sends arrow glyph | repeat path used label | `default_action()` returns `(action, value)` |
+
+---
+
+## Quick reference: key files
+
+```
+app/src/main/python/kivy_ime/keyboard.py   # 1000+ lines, all layout logic
+app/src/main/python/kivy_ime/bridge.py     # socket client (JSON lines)
+app/src/main/python/main.py                # entry point
+app/src/main/java/.../KivyImeHost.kt       # Android host (unpack, SDL bootstrap)
+app/src/main/java/.../PythonActivity.java  # Java shim for p4a android module
+sync_python.sh                              # fast Python-only rebuild script
+```
+
+---
+
+## Summary
+
+| Change type | File | Rebuild |
+|-------------|------|---------|
+| Key label / position / swipe | `keyboard.py` `ROWS` / `ENGLISH_BAR` | `./sync_python.sh` |
+| Colour / size / padding | constants at top of `ImeKeyboard` | `./sync_python.sh` |
+| Gesture mapping | `gestures={...}` in key spec | `./sync_python.sh` |
+| Font / sound | `_CJK_CANDIDATES` / `SoundPlayer.PATHS` | `./sync_python.sh` |
+| Socket protocol | `bridge.py` | `./sync_python.sh` |
+| Kotlin-side logic (bridge commands) | `KivyImeHost.kt` / `MrubyimeIME.kt` | `gradlew assembleRelease` |
+
+**Always test on desktop first (`verify_fixes.py` / `kivy_smoke.py`),
+then push to device with `./sync_python.sh`.**

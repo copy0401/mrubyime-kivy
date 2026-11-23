@@ -2,4 +2,10 @@
     <string name="app_name">小蝦米輸入法</string>
     <string name="ime_name">小蝦米輸入法</string>
     <string name="documents_root_title">小蝦米輸入法</string>
+    <!-- python-for-android bootstrap: sha1 of assets/private.tar. The bundle is
+         unpacked into files/app only when this differs from the recorded copy,
+         so it must match or the 13 MB bundle is re-extracted on every launch. -->
+    <string name="private_version">0337e0fcbd836aa95526c3bb98fd85c537fa81ef</string>
+    <string name="presplash_color">#000000</string>
+    <string name="urlScheme">kivy</string>
 </resources>

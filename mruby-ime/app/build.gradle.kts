@@ -32,6 +32,9 @@ android {
         // Compress the .so into the APK (smaller download). Android extracts it
         // at install time, so the installed footprint grows slightly.
         jniLibs { useLegacyPackaging = true }
+        // libpybundle.so is a tar of the python bundle, not an ELF object, so
+        // the NDK strip step rejects it. Keep its "debug symbols" as-is.
+        jniLibs { keepDebugSymbols += "**/libpybundle.so" }
     }
 
     signingConfigs {

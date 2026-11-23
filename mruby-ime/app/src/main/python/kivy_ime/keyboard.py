@@ -148,7 +148,9 @@ class Key(Widget):
                  gestures=None, repeat=False, long_press=None,
                  on_commit=None, font_size=None, **kwargs):
         super().__init__(**kwargs)
-        self.value = label if value is None else value
+        # Only a code key picks up its label; backspace/space/enter
+        # keep value=None so nothing can send their glyph.
+        self.value = (label if value is None and action == "code" else value)
         self.action = action
         self.sub_label = sub_label
         self.gestures = {k: _gesture(v) for k, v in (gestures or {}).items()}
@@ -218,6 +220,12 @@ class Key(Widget):
         Animation.cancel_all(self, "press")
         Animation(press=target, d=duration).start(self)
 
+    # -- action --------------------------------------------------------
+    def default_action(self):
+        """What a plain tap (or a repeat tick) does: the key's own action,
+        never its label. Backspace must not fall back to the arrow glyph."""
+        return (self.action, self.value)
+
     # -- touch ---------------------------------------------------------
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos):
@@ -230,7 +238,7 @@ class Key(Widget):
         if self.long_press:
             self._long_event = Clock.schedule_once(self._fire_long, 0.6)
         if self.repeat:
-            self._fire(("code", self.value))
+            self._fire(self.default_action())
             self._repeat_event = Clock.schedule_once(self._repeat_start, 0.4)
         return True
 
@@ -260,8 +268,7 @@ class Key(Widget):
             if direction and direction in self.gestures:
                 self._fire(self.gestures[direction])
                 return True
-        self._fire(("code", self.value) if self.action == "code"
-                   else (self.action, self.value))
+        self._fire(self.default_action())
         return True
 
     @staticmethod
@@ -306,7 +313,9 @@ class Key(Widget):
 # Candidate chip
 # --------------------------------------------------------------------------
 class Chip(Widget):
-    """Transparent candidate chip; the selected one gets a #CCCCCC plate."""
+    """Candidate chip: flat by default, the selected one is bold + filled."""
+
+    selected = BooleanProperty(False)
 
     def __init__(self, text, selkey=None, selected=False, index=-1,
                  on_select=None, min_width=0, **kwargs):
@@ -319,8 +328,10 @@ class Chip(Widget):
         self.min_width = min_width
 
         shown = ("%s%s" % (selkey, text)) if selkey else text
+        # Only the selected chip is bold (and the only one filled), so the
+        # candidate row stays flat like the DSL's bar.
         self._label = Label(
-            text=shown, font_name=FONT_NAME, font_size=sp(24), bold=True,
+            text=shown, font_name=FONT_NAME, font_size=sp(24), bold=selected,
             color=INK, halign="center", valign="middle", size_hint=(None, None),
         )
         self.add_widget(self._label)
@@ -329,7 +340,7 @@ class Chip(Widget):
             self._bg_color = Color(*(CHIP_SELECTED if selected else CLEAR))
             self._bg = Rectangle()
 
-        self.bind(pos=self._sync, size=self._sync)
+        self.bind(pos=self._sync, size=self._sync, selected=self._sync)
         self.width = self._text_width(shown)
         self._sync()
 
@@ -342,6 +353,7 @@ class Chip(Widget):
             return max(self.min_width, dp(48))
 
     def _sync(self, *_args):
+        self._bg_color.rgba = CHIP_SELECTED if self.selected else CLEAR
         self._bg.pos = self.pos
         self._bg.size = self.size
         self._label.pos = (self.x, self.y)
@@ -475,6 +487,11 @@ class ImeKeyboard(BoxLayout):
 
         self._bar_box = BoxLayout(orientation="horizontal", spacing=0,
                                   size_hint_y=None, height=self.bar_h)
+        self._bar_bg = None
+        with self._bar_box.canvas.before:
+            self._bar_bg_color = Color(*BAR_BG)
+            self._bar_bg = Rectangle()
+        self._bar_box.bind(pos=self._paint_bar, size=self._paint_bar)
         self.add_widget(self._bar_box)
 
         self._rows_box = BoxLayout(
@@ -489,6 +506,19 @@ class ImeKeyboard(BoxLayout):
         self._build()
 
     # -- measurement ---------------------------------------------------
+    def _paint_bar(self, *_args):
+        """Keep the bar's plate in sync with its box.
+
+        The DSL gives the bar its own colour (`bar bg: :bar` -> #F5F5F5), so
+        the candidate chips sit on a flat light plate and only the selected
+        chip is filled. Without it the bar shows the (white) window clear
+        colour and looks nothing like the key plates.
+        """
+        if self._bar_box is None or self._bar_bg is None:
+            return
+        self._bar_bg.pos = self._bar_box.pos
+        self._bar_bg.size = self._bar_box.size
+
     @staticmethod
     def _measure(text, size=24):
         try:
@@ -625,8 +655,9 @@ class ImeKeyboard(BoxLayout):
             return
         self._chips_box.clear_widgets()
         if not self.candidates:
+            # Empty state: a plain box, not a "selected" one.
             self._chips_box.add_widget(
-                Chip("", selected=True, min_width=self._chip_min_width))
+                Chip("", selected=False, min_width=self._chip_min_width))
             return
         for index, text in enumerate(self.candidates):
             selkey = str(index) if index < 10 else None

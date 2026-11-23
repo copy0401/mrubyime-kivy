@@ -19,6 +19,12 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".ImeTestActivity"
+                  android:exported="true"
+                  android:label="IME 測試"
+                  android:windowSoftInputMode="stateVisible"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
         <service android:name=".MrubyimeIME"
                  android:label="@string/ime_name"
                  android:permission="android.permission.BIND_INPUT_METHOD"
