@@ -46,12 +46,9 @@ BAR_BG = (245 / 255.0, 245 / 255.0, 245 / 255.0, 1.0)
 KEY_BG = (224 / 255.0, 224 / 255.0, 224 / 255.0, 1.0)
 KEY_PRESSED = (204 / 255.0, 204 / 255.0, 204 / 255.0, 1.0)
 SEAM = (153 / 255.0, 153 / 255.0, 153 / 255.0, 1.0)
-CHIP_SELECTED = (204 / 255.0, 204 / 255.0, 204 / 255.0, 1.0)
+# Candidate chips all share one plate (selected is bold, not yellow).
+CHIP_BG = KEY_BG
 CLEAR = (1.0, 1.0, 1.0, 0.0)
-
-# Key press effects
-RIPPLE = (0.2, 0.6, 1.0, 0.5)   # Blue cyan ripple
-GLOW = (0.2, 0.8, 1.0, 0.3)     # Blue glow
 
 # --------------------------------------------------------------------------
 # Fonts: Roboto has no CJK glyphs, so bind a system CJK face.
@@ -85,6 +82,35 @@ def _register_cjk_font():
 
 
 FONT_NAME = _register_cjk_font()
+
+# --------------------------------------------------------------------------
+# Emoji font: Noto CJK has no 🦖 glyph (it renders as tofu), so the game
+# button needs the system emoji face.
+# --------------------------------------------------------------------------
+_EMOJI_CANDIDATES = (
+    "/system/fonts/NotoColorEmoji.ttf",
+    "/system/fonts/NotoColorEmojiFlags.ttf",
+    # desktop smoke tests
+    "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+    "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+)
+
+
+def _register_emoji_font():
+    for path in _EMOJI_CANDIDATES:
+        if not os.path.exists(path):
+            continue
+        try:
+            LabelBase.register(name="EMOJI", fn_regular=path)
+            print("kivy-ime: emoji font %s" % path, flush=True)
+            return "EMOJI"
+        except Exception as exc:  # noqa: BLE001 - font probing must not crash
+            print("kivy-ime: emoji font %s failed: %s" % (path, exc), flush=True)
+    print("kivy-ime: no emoji font found, using default", flush=True)
+    return "Roboto"
+
+
+EMOJI_FONT_NAME = _register_emoji_font()
 
 
 # --------------------------------------------------------------------------
@@ -247,15 +273,9 @@ class Key(Widget):
     edge_left = BooleanProperty(False)
     edge_top = BooleanProperty(False)
 
-    # Key press effects
-    ripple_r = NumericProperty(0.0)
-    ripple_a = NumericProperty(0.0)
-    glow_r = NumericProperty(0.0)
-    glow_a = NumericProperty(0.0)
-
     def __init__(self, label="", value=None, action="code", sub_label="",
                  gestures=None, repeat=False, long_press=None,
-                 on_commit=None, font_size=None, **kwargs):
+                 on_commit=None, font_size=None, emoji=False, **kwargs):
         super().__init__(**kwargs)
         # Only a code key picks up its label; backspace/space/enter
         # keep value=None so nothing can send their glyph.
@@ -272,7 +292,7 @@ class Key(Widget):
         self._long_fired = False
 
         self._label = Label(
-            text=label, font_name=FONT_NAME,
+            text=label, font_name=EMOJI_FONT_NAME if emoji else FONT_NAME,
             font_size=font_size or sp(20), bold=True, color=INK,
             halign="center", valign="middle", size_hint=(None, None),
         )
@@ -292,16 +312,9 @@ class Key(Widget):
             self._seam_bottom = Line(width=dp(1))
             self._seam_left = Line(width=dp(1))
             self._seam_top = Line(width=dp(1))
-            # Key press effects
-            self._ripple_color = Color(*RIPPLE[:3], 0)
-            self._ripple = Ellipse()
-            self._glow_color = Color(*GLOW[:3], 0)
-            self._glow = Ellipse()
 
         self.bind(pos=self._sync, size=self._sync, press=self._sync,
-                  edge_left=self._sync, edge_top=self._sync,
-                  ripple_r=self._sync, ripple_a=self._sync,
-                  glow_r=self._sync, glow_a=self._sync)
+                  edge_left=self._sync, edge_top=self._sync)
         self._sub.bind(texture_size=self._sync)
         self._sync()
 
@@ -331,33 +344,10 @@ class Key(Widget):
         self._seam_top.points = (
             [self.x, self.top, self.right, self.top] if self.edge_top else [])
 
-        # Key press effects
-        cx, cy = self.center_x, self.center_y
-        r = self.ripple_r
-        self._ripple.pos = (cx - r, cy - r)
-        self._ripple.size = (2 * r, 2 * r)
-        self._ripple_color.rgba = RIPPLE[:3] + (self.ripple_a,)
-
-        rg = self.glow_r
-        self._glow.pos = (cx - rg, cy - rg)
-        self._glow.size = (2 * rg, 2 * rg)
-        self._glow_color.rgba = GLOW[:3] + (self.glow_a,)
-
     # -- feedback ------------------------------------------------------
     def _animate(self, target, duration):
         Animation.cancel_all(self, "press")
         Animation(press=target, d=duration).start(self)
-
-    # Key press effects
-    def _trigger_effects(self):
-        # Ripple expands from touch point
-        self.ripple_r = 0
-        self.ripple_a = 0.6
-        Animation(ripple_r=max(self.width, self.height), ripple_a=0, d=0.3).start(self)
-        # Glow expands behind key
-        self.glow_r = self.width * 0.3
-        self.glow_a = 0.4
-        Animation(glow_r=self.width * 1.2, glow_a=0, d=0.25).start(self)
 
     # -- action --------------------------------------------------------
     def default_action(self):
@@ -374,7 +364,6 @@ class Key(Widget):
         touch.grab(self)
         self._animate(1.0, 0.05)
         SoundPlayer.click()
-        self._trigger_effects()
         if self.long_press:
             self._long_event = Clock.schedule_once(self._fire_long, 0.6)
         if self.repeat:
@@ -477,7 +466,9 @@ class Chip(Widget):
         self.add_widget(self._label)
 
         with self.canvas.before:
-            self._bg_color = Color(*(CHIP_SELECTED if selected else CLEAR))
+            # Every chip carries the same plate: the candidate row reads as one
+            # band of keys, and only the selected chip is bold.
+            self._bg_color = Color(*CHIP_BG)
             self._bg = Rectangle()
 
         self.bind(pos=self._sync, size=self._sync, selected=self._sync)
@@ -493,7 +484,7 @@ class Chip(Widget):
             return max(self.min_width, dp(48))
 
     def _sync(self, *_args):
-        self._bg_color.rgba = CHIP_SELECTED if self.selected else CLEAR
+        self._bg_color.rgba = CHIP_BG
         self._bg.pos = self.pos
         self._bg.size = self.size
         self._label.pos = (self.x, self.y)
@@ -558,7 +549,21 @@ class GameWidget(Widget):
         # Touch tracking
         self._touch_start = None
         self._swipe = None
-        
+
+        # Score read-out (top-right): "HI 00123   00045"
+        self._score_label = Label(
+            text="HI 00000   00000", font_name=FONT_NAME, font_size=sp(16),
+            bold=True, color=INK, halign="right", valign="top",
+            size_hint=(None, None),
+        )
+        self._over_label = Label(
+            text="", font_name=FONT_NAME, font_size=sp(18), bold=True,
+            color=INK, halign="center", valign="middle",
+            size_hint=(None, None),
+        )
+        self.add_widget(self._score_label)
+        self.add_widget(self._over_label)
+
         # Bind size
         self.bind(size=self._on_size, pos=self._on_pos)
         
@@ -570,10 +575,30 @@ class GameWidget(Widget):
     def _on_size(self, *args):
         if not self.running and not self.game_over and self.width > 0 and self.height > 0:
             self._reset_game()
+        self._sync_overlays()
         self.draw()
-    
+
     def _on_pos(self, *args):
+        self._sync_overlays()
         self.draw()
+
+    def _sync_overlays(self):
+        """Keep the two text overlays pinned to their corners."""
+        if self.parent is None:
+            return
+        pad = dp(8)
+        sw, sh = self._score_label.texture_size
+        self._score_label.size = (sw, sh)
+        self._score_label.pos = (
+            self.right - sw - pad,
+            self.top - sh - pad,
+        )
+        ow, oh = self._over_label.texture_size
+        self._over_label.size = (ow, oh)
+        self._over_label.pos = (
+            self.center_x - ow / 2.0,
+            self.center_y - oh / 2.0,
+        )
     
     def _reset_game(self):
         self.running = True
@@ -597,6 +622,9 @@ class GameWidget(Widget):
                 'speed': random.uniform(0.2, 0.5)
             })
         GameSounds.start_music()
+        self._over_label.text = ""
+        self._update_score_text()
+        self._sync_overlays()
     
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos):
@@ -708,6 +736,7 @@ class GameWidget(Widget):
                 break
         
         # Update score display
+        self._update_score_text()
         self.draw()
     
     def _spawn_obstacle(self):
@@ -743,12 +772,26 @@ class GameWidget(Widget):
         GameSounds.stop_music()
         if self.score > self.high_score:
             self.high_score = self.score
+        self._over_label.text = "GAME OVER - TAP TO RETRY"
+        self._update_score_text()
+        self._sync_overlays()
     
+    def _update_score_text(self):
+        """HI + current score, zero-padded like the Chrome dino."""
+        self._score_label.text = "HI %05d   %05d" % (self.high_score, self.score)
+        self._score_label.texture_update()
+        self._sync_overlays()
+
     def draw(self):
-        """Draw the game on canvas."""
-        self.canvas.clear()
-        
-        with self.canvas:
+        """Draw the game.
+
+        Everything goes into ``canvas.before`` on purpose: Widget draws
+        ``canvas.before`` -> children -> ``canvas`` -> ``canvas.after``, so the
+        score Label and the GAME OVER text must sit above the graphics.
+        """
+        self.canvas.before.clear()
+
+        with self.canvas.before:
             # Sky background
             Color(0.95, 0.95, 0.95, 1)
             Rectangle(pos=self.pos, size=self.size)
@@ -806,12 +849,9 @@ class GameWidget(Widget):
                 Color(0, 0, 0, 0.7)
                 Rectangle(pos=self.pos, size=self.size)
                 Color(1, 1, 1, 1)
-                # Would draw "GAME OVER" text here - simplified for now
-            
-            # Score
-            Color(0.2, 0.2, 0.2, 1)
-            # Score display - using a simple rectangle as placeholder
-            Rectangle(pos=(self.width - dp(120), self.height - dp(50)), size=(dp(100), dp(30)))
+
+            # Score / game-over text are Label children (they need real font
+            # shaping), so nothing more to draw here.
 
 
 # --------------------------------------------------------------------------
@@ -882,7 +922,7 @@ ROW_5 = [
 ROWS = [ROW_1, ROW_2, ROW_3, ROW_4, ROW_5]
 
 # Shared bar keys: the game button (T-Rex runner) and the hide button.
-GAME_KEY = {"label": "\U0001f996", "action": "game"}
+GAME_KEY = {"label": "\U0001f996", "action": "game", "emoji": True, "font_size": 16}
 HIDE_KEY = {"label": "\u25bc", "action": "hide", "long_press": "toggle_hide_rows"}
 
 ENGLISH_BAR = [
@@ -1056,6 +1096,7 @@ class ImeKeyboard(BoxLayout):
             long_press=spec.get("long_press"),
             on_commit=self._emit,
             font_size=font_size,
+            emoji=spec.get("emoji", False),
         )
 
     def _rebuild_bar(self):

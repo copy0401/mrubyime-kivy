@@ -45,8 +45,11 @@ data = {m.name: (base.extractfile(m).read() if m.isfile() else b"")
 base.close()
 
 # Compile the tree the way p4a does (PYTHONOPTIMIZE=2 -> -OO).
-tmp = tempfile.mkdtemp()
-build = os.path.join(tmp, "build")
+# NOTE: a FIXED build dir, not mkdtemp(): a .pyc records the module's
+# __file__, so a changing path changes the bytes and the sha1 with them.
+build = "/tmp/kivy_ime_pyc_build"
+if os.path.isdir(build):
+    shutil.rmtree(build)
 os.makedirs(build)
 for rel in ["main.py", "sitecustomize.py",
             "kivy_ime/__init__.py", "kivy_ime/bridge.py", "kivy_ime/keyboard.py"]:
@@ -55,6 +58,15 @@ for rel in ["main.py", "sitecustomize.py",
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     shutil.copy(os.path.join(source, rel), dst)
     py_compile.compile(dst, cfile=dst + "c", doraise=True, optimize=2)
+
+    # A .pyc header stores the source mtime (bytes 8-12), so the same sources
+    # compile to different bytes on every run. Zero it for a stable sha1.
+    pyc = dst + "c"
+    with open(pyc, "r+b") as fh:
+        head = fh.read(16)
+        fh.seek(8)
+        fh.write(b"\0" * 4)
+        fh.close()
 
 compiled = {rel: os.path.join(build, rel + "c") for rel in
             ["main.py", "sitecustomize.py",
@@ -83,13 +95,29 @@ for member in members:
     member.size = len(payload)        # type/mode/owner stay as p4a wrote them
     changed.append(member.name)
 
-out = tarfile.open(out_tar, "w:gz", format=tarfile.USTAR_FORMAT)
+# Deterministic output: identical sources -> identical sha1 -> the app skips
+# re-unpacking the 13 MB python bundle (PythonUtil.unpackAsset deletes the
+# whole app dir first, so a spurious sha1 change costs a full re-extract).
+for member in members:
+    member.mtime = 0
+    member.uid = member.gid = 0
+    member.uname = member.gname = ""
+
+import gzip
+raw = tempfile.NamedTemporaryFile(delete=False, suffix=".tar")
+raw.close()
+out = tarfile.open(raw.name, "w", format=tarfile.USTAR_FORMAT)
 for member in members:
     if member.isdir():
         out.addfile(member)
     else:
         out.addfile(member, io.BytesIO(data[member.name]))
 out.close()
+
+with open(raw.name, "rb") as src, gzip.GzipFile(
+        out_tar, "wb", compresslevel=9, mtime=0) as dst:
+    dst.write(src.read())
+os.unlink(raw.name)
 
 with open(sha1_file, "w") as fh:
     fh.write(hashlib.sha1(open(out_tar, "rb").read()).hexdigest())
