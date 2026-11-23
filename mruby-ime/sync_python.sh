@@ -25,25 +25,20 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$here"
 
 APP="$here/app/src/main/python"
-P4A="$here/.buildozer/android/app"          # p4a staging dir (sitecustomize.py)
-P4A_TAR="$here/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists/mrubyime_kivy/src/main/assets/private.tar"
 TAR="$here/app/src/main/assets/private.tar"
 RES="$here/app/src/main/res/values/strings.xml"
 
-if [ ! -f "$P4A/sitecustomize.py" ]; then
-    echo "missing $P4A/sitecustomize.py -- run ./buildozer_apk.sh debug once first" >&2
-    exit 1
-fi
-
 sha1="$(mktemp)"; trap 'rm -f "$sha1"' EXIT
 
-python3 - "$APP" "$P4A" "$P4A_TAR" "$TAR" "$sha1" <<'PY'
+python3 - "$APP" "$TAR" "$sha1" <<'PY'
 import hashlib, os, py_compile, shutil, sys, tarfile, tempfile, io
 
-app, p4a, base_tar, out_tar, sha1_file = sys.argv[1:6]
+app, out_tar, sha1_file = sys.argv[1:4]
 
-# p4a's own tar is the reference: same entries, same types, USTAR, no pax.
-base = tarfile.open(base_tar)
+# The tar we ship IS the reference: p4a built it once (sitecustomize.py
+# included), so repacking it keeps the exact entry set, member types (DIR vs
+# REG) and gzip wrapper -- which is what org.kamranzafar.jtar on device needs.
+base = tarfile.open(out_tar)
 members = base.getmembers()
 data = {m.name: (base.extractfile(m).read() if m.isfile() else b"")
         for m in members}
@@ -55,7 +50,7 @@ build = os.path.join(tmp, "build")
 os.makedirs(build)
 for rel in ["main.py", "sitecustomize.py",
             "kivy_ime/__init__.py", "kivy_ime/bridge.py", "kivy_ime/keyboard.py"]:
-    source = p4a if rel == "sitecustomize.py" else app
+    source = app
     dst = os.path.join(build, rel)
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     shutil.copy(os.path.join(source, rel), dst)

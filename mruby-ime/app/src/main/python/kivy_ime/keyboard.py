@@ -14,6 +14,7 @@ Feedback uses ``kivy.animation`` (the plate sinks and darkens) and
 """
 
 import os
+import random
 import threading
 import time
 
@@ -24,7 +25,7 @@ from kivy.core.audio import SoundLoader
 from kivy.core.text import Label as CoreLabel
 from kivy.core.text import LabelBase
 from kivy.core.window import Window
-from kivy.graphics import Color, Line, Rectangle
+from kivy.graphics import Color, Line, Rectangle, Ellipse
 from kivy.metrics import dp, sp
 from kivy.properties import BooleanProperty, NumericProperty
 from kivy.uix.anchorlayout import AnchorLayout
@@ -47,6 +48,10 @@ KEY_PRESSED = (204 / 255.0, 204 / 255.0, 204 / 255.0, 1.0)
 SEAM = (153 / 255.0, 153 / 255.0, 153 / 255.0, 1.0)
 CHIP_SELECTED = (204 / 255.0, 204 / 255.0, 204 / 255.0, 1.0)
 CLEAR = (1.0, 1.0, 1.0, 0.0)
+
+# Key press effects
+RIPPLE = (0.2, 0.6, 1.0, 0.5)   # Blue cyan ripple
+GLOW = (0.2, 0.8, 1.0, 0.3)     # Blue glow
 
 # --------------------------------------------------------------------------
 # Fonts: Roboto has no CJK glyphs, so bind a system CJK face.
@@ -80,6 +85,104 @@ def _register_cjk_font():
 
 
 FONT_NAME = _register_cjk_font()
+
+
+# --------------------------------------------------------------------------
+# Game sounds
+# --------------------------------------------------------------------------
+class GameSounds:
+    """Game sound effects and background music."""
+    
+    _jump_sound = None
+    _hit_sound = None
+    _bg_music = None
+    _tried = False
+    
+    JUMP_PATHS = (
+        "/system/media/audio/ui/KeypressStandard.ogg",
+        "/system/media/audio/ui/KeypressSpacebar.ogg",
+    )
+    HIT_PATHS = (
+        "/system/media/audio/ui/KeypressDelete.ogg",
+        "/system/media/audio/ui/Effect_Tick.ogg",
+    )
+    MUSIC_PATHS = (
+        "/system/media/audio/ringtones/Luna.ogg",
+        "/system/media/audio/ringtones/Orion.ogg",
+    )
+    
+    @classmethod
+    def _load(cls):
+        cls._tried = True
+        # Jump sound
+        for path in cls.JUMP_PATHS:
+            if os.path.exists(path):
+                sound = SoundLoader.load(path)
+                if sound:
+                    sound.volume = 0.7
+                    cls._jump_sound = sound
+                    break
+        # Hit sound
+        for path in cls.HIT_PATHS:
+            if os.path.exists(path):
+                sound = SoundLoader.load(path)
+                if sound:
+                    sound.volume = 0.8
+                    cls._hit_sound = sound
+                    break
+        # Background music
+        for path in cls.MUSIC_PATHS:
+            if os.path.exists(path):
+                sound = SoundLoader.load(path)
+                if sound:
+                    sound.volume = 0.3
+                    sound.loop = True
+                    cls._bg_music = sound
+                    break
+        if not cls._jump_sound:
+            print("kivy-ime: no jump sound available", flush=True)
+        if not cls._hit_sound:
+            print("kivy-ime: no hit sound available", flush=True)
+        if not cls._bg_music:
+            print("kivy-ime: no background music available", flush=True)
+    
+    @classmethod
+    def play_jump(cls):
+        if not cls._tried:
+            cls._load()
+        if cls._jump_sound:
+            try:
+                cls._jump_sound.play()
+            except Exception:
+                pass
+    
+    @classmethod
+    def play_hit(cls):
+        if not cls._tried:
+            cls._load()
+        if cls._hit_sound:
+            try:
+                cls._hit_sound.play()
+            except Exception:
+                pass
+    
+    @classmethod
+    def start_music(cls):
+        if not cls._tried:
+            cls._load()
+        if cls._bg_music:
+            try:
+                cls._bg_music.play()
+            except Exception:
+                pass
+    
+    @classmethod
+    def stop_music(cls):
+        if cls._bg_music:
+            try:
+                cls._bg_music.stop()
+            except Exception:
+                pass
 
 
 # --------------------------------------------------------------------------
@@ -144,6 +247,12 @@ class Key(Widget):
     edge_left = BooleanProperty(False)
     edge_top = BooleanProperty(False)
 
+    # Key press effects
+    ripple_r = NumericProperty(0.0)
+    ripple_a = NumericProperty(0.0)
+    glow_r = NumericProperty(0.0)
+    glow_a = NumericProperty(0.0)
+
     def __init__(self, label="", value=None, action="code", sub_label="",
                  gestures=None, repeat=False, long_press=None,
                  on_commit=None, font_size=None, **kwargs):
@@ -183,9 +292,16 @@ class Key(Widget):
             self._seam_bottom = Line(width=dp(1))
             self._seam_left = Line(width=dp(1))
             self._seam_top = Line(width=dp(1))
+            # Key press effects
+            self._ripple_color = Color(*RIPPLE[:3], 0)
+            self._ripple = Ellipse()
+            self._glow_color = Color(*GLOW[:3], 0)
+            self._glow = Ellipse()
 
         self.bind(pos=self._sync, size=self._sync, press=self._sync,
-                  edge_left=self._sync, edge_top=self._sync)
+                  edge_left=self._sync, edge_top=self._sync,
+                  ripple_r=self._sync, ripple_a=self._sync,
+                  glow_r=self._sync, glow_a=self._sync)
         self._sub.bind(texture_size=self._sync)
         self._sync()
 
@@ -215,10 +331,33 @@ class Key(Widget):
         self._seam_top.points = (
             [self.x, self.top, self.right, self.top] if self.edge_top else [])
 
+        # Key press effects
+        cx, cy = self.center_x, self.center_y
+        r = self.ripple_r
+        self._ripple.pos = (cx - r, cy - r)
+        self._ripple.size = (2 * r, 2 * r)
+        self._ripple_color.rgba = RIPPLE[:3] + (self.ripple_a,)
+
+        rg = self.glow_r
+        self._glow.pos = (cx - rg, cy - rg)
+        self._glow.size = (2 * rg, 2 * rg)
+        self._glow_color.rgba = GLOW[:3] + (self.glow_a,)
+
     # -- feedback ------------------------------------------------------
     def _animate(self, target, duration):
         Animation.cancel_all(self, "press")
         Animation(press=target, d=duration).start(self)
+
+    # Key press effects
+    def _trigger_effects(self):
+        # Ripple expands from touch point
+        self.ripple_r = 0
+        self.ripple_a = 0.6
+        Animation(ripple_r=max(self.width, self.height), ripple_a=0, d=0.3).start(self)
+        # Glow expands behind key
+        self.glow_r = self.width * 0.3
+        self.glow_a = 0.4
+        Animation(glow_r=self.width * 1.2, glow_a=0, d=0.25).start(self)
 
     # -- action --------------------------------------------------------
     def default_action(self):
@@ -235,6 +374,7 @@ class Key(Widget):
         touch.grab(self)
         self._animate(1.0, 0.05)
         SoundPlayer.click()
+        self._trigger_effects()
         if self.long_press:
             self._long_event = Clock.schedule_once(self._fire_long, 0.6)
         if self.repeat:
@@ -369,6 +509,312 @@ class Chip(Widget):
 
 
 # --------------------------------------------------------------------------
+# T-Rex Runner Game
+# --------------------------------------------------------------------------
+class GameWidget(Widget):
+    """T-Rex runner game widget."""
+    
+    # Game constants
+    DINO_WIDTH = dp(40)
+    DINO_HEIGHT = dp(44)
+    CACTUS_WIDTH = dp(20)
+    CACTUS_HEIGHT = dp(40)
+    GROUND_HEIGHT = dp(20)
+    JUMP_VELOCITY = dp(600)
+    GRAVITY = dp(1500)
+    GAME_SPEED = dp(300)
+    SPEED_INCREASE = dp(10)
+    
+    def __init__(self, on_exit=None, **kwargs):
+        super().__init__(**kwargs)
+        self.on_exit = on_exit
+        self.size_hint = (1, 1)
+        
+        # Game state
+        self.running = False
+        self.game_over = False
+        self.score = 0
+        self.high_score = 0
+        self.speed = self.GAME_SPEED
+        
+        # Dino state
+        self.dino_x = dp(50)
+        self.dino_y = self.GROUND_HEIGHT
+        self.dino_vel_y = 0
+        self.is_jumping = False
+        self.is_ducking = False
+        
+        # Obstacles
+        self.obstacles = []  # list of (x, width, height, is_bird)
+        self.spawn_timer = 0
+        self.spawn_interval = 1.5
+        
+        # Ground
+        self.ground_x = 0
+        
+        # Clouds
+        self.clouds = []
+        
+        # Touch tracking
+        self._touch_start = None
+        self._swipe = None
+        
+        # Bind size
+        self.bind(size=self._on_size, pos=self._on_pos)
+        
+        # Game loop
+        self._game_clock = Clock.schedule_interval(self._update, 1/60)
+        # Start immediately; _on_size also resets once a real size arrives.
+        Clock.schedule_once(lambda _dt: self._reset_game(), 0)
+    
+    def _on_size(self, *args):
+        if not self.running and not self.game_over and self.width > 0 and self.height > 0:
+            self._reset_game()
+        self.draw()
+    
+    def _on_pos(self, *args):
+        self.draw()
+    
+    def _reset_game(self):
+        self.running = True
+        self.game_over = False
+        self.score = 0
+        self.speed = self.GAME_SPEED
+        self.dino_x = dp(50)
+        self.dino_y = self.GROUND_HEIGHT
+        self.dino_vel_y = 0
+        self.is_jumping = False
+        self.is_ducking = False
+        self.obstacles = []
+        self.spawn_timer = 0
+        self.clouds = []
+        self.ground_x = 0
+        # Spawn initial clouds
+        for i in range(3):
+            self.clouds.append({
+                'x': self.width + random.uniform(0, self.width),
+                'y': self.height * 0.6 + random.uniform(0, self.height * 0.2),
+                'speed': random.uniform(0.2, 0.5)
+            })
+        GameSounds.start_music()
+    
+    def on_touch_down(self, touch):
+        if not self.collide_point(*touch.pos):
+            return False
+        
+        if self.game_over:
+            # Restart game
+            self._reset_game()
+            return True
+        
+        self._touch_start = (touch.x, touch.y)
+        self._swipe = None          # None | "jump" | "duck"
+        touch.grab(self)
+        return True
+    
+    def on_touch_move(self, touch):
+        if touch.grab_current is not self:
+            return False
+        
+        if self._touch_start is None:
+            self._touch_start = (touch.x, touch.y)
+        
+        dy = touch.y - self._touch_start[1]
+        threshold = dp(30)
+        
+        # Swipe down -> duck (live), swipe up -> arm a jump
+        if dy < -threshold and not self.is_jumping:
+            self._swipe = "duck"
+            self.is_ducking = True
+        elif dy > threshold:
+            self._swipe = "jump"
+        
+        return True
+    
+    def on_touch_up(self, touch):
+        if touch.grab_current is not self:
+            return False
+        touch.ungrab(self)
+        start = self._touch_start
+        swipe = self._swipe
+        self._touch_start = None
+        self._swipe = None
+        
+        if swipe == "duck":
+            # Release the duck now that the finger lifted.
+            self.is_ducking = False
+            return True
+        
+        if not self.is_jumping:
+            # Tap (or swipe up) -> jump.
+            self.is_jumping = True
+            self.dino_vel_y = self.JUMP_VELOCITY
+            self.is_ducking = False
+            GameSounds.play_jump()
+        
+        return True
+    
+    def _update(self, dt):
+        if not self.running or self.game_over:
+            return
+        
+        # Update dino physics
+        if self.is_jumping:
+            self.dino_vel_y -= self.GRAVITY * dt
+            self.dino_y += self.dino_vel_y * dt
+            
+            if self.dino_y <= self.GROUND_HEIGHT:
+                self.dino_y = self.GROUND_HEIGHT
+                self.dino_vel_y = 0
+                self.is_jumping = False
+        
+        # Ducking reduces height
+        dino_height = self.DINO_HEIGHT * 0.6 if self.is_ducking else self.DINO_HEIGHT
+        
+        # Update ground
+        self.ground_x -= self.speed * dt
+        if self.ground_x <= -self.width:
+            self.ground_x = 0
+        
+        # Update clouds
+        for cloud in self.clouds:
+            cloud['x'] -= cloud['speed'] * self.speed * dt
+            if cloud['x'] < -dp(100):
+                cloud['x'] = self.width + random.uniform(0, self.width)
+        
+        # Spawn obstacles
+        self.spawn_timer += dt
+        if self.spawn_timer >= self.spawn_interval:
+            self.spawn_timer = 0
+            self._spawn_obstacle()
+        
+        # Update obstacles
+        for obs in self.obstacles[:]:
+            obs['x'] -= self.speed * dt
+            if obs['x'] < -obs['width']:
+                self.obstacles.remove(obs)
+                self.score += 1
+                # Increase speed slightly
+                self.speed += self.SPEED_INCREASE
+                # Decrease spawn interval slightly
+                self.spawn_interval = max(0.8, self.spawn_interval - 0.02)
+        
+        # Check collisions
+        dino_rect = (self.dino_x, self.dino_y, self.DINO_WIDTH, dino_height)
+        for obs in self.obstacles:
+            obs_rect = (obs['x'], obs['y'], obs['width'], obs['height'])
+            if self._rects_collide(dino_rect, obs_rect):
+                self._game_over()
+                break
+        
+        # Update score display
+        self.draw()
+    
+    def _spawn_obstacle(self):
+        # Randomly choose cactus or bird
+        if random.random() < 0.7:
+            # Cactus
+            width = self.CACTUS_WIDTH
+            height = self.CACTUS_HEIGHT
+            y = self.GROUND_HEIGHT
+        else:
+            # Bird (flies higher)
+            width = dp(30)
+            height = dp(30)
+            y = self.GROUND_HEIGHT + random.uniform(dp(40), dp(100))
+        
+        self.obstacles.append({
+            'x': self.width,
+            'y': y,
+            'width': width,
+            'height': height
+        })
+    
+    def _rects_collide(self, rect1, rect2):
+        x1, y1, w1, h1 = rect1
+        x2, y2, w2, h2 = rect2
+        return (x1 < x2 + w2 and x1 + w1 > x2 and
+                y1 < y2 + h2 and y1 + h1 > y2)
+    
+    def _game_over(self):
+        self.game_over = True
+        self.running = False
+        GameSounds.play_hit()
+        GameSounds.stop_music()
+        if self.score > self.high_score:
+            self.high_score = self.score
+    
+    def draw(self):
+        """Draw the game on canvas."""
+        self.canvas.clear()
+        
+        with self.canvas:
+            # Sky background
+            Color(0.95, 0.95, 0.95, 1)
+            Rectangle(pos=self.pos, size=self.size)
+            
+            # Clouds
+            Color(0.7, 0.7, 0.7, 0.8)
+            for cloud in self.clouds:
+                Ellipse(pos=(cloud['x'], cloud['y']), size=(dp(60), dp(30)))
+                Ellipse(pos=(cloud['x'] + dp(20), cloud['y'] - dp(5)), size=(dp(40), dp(20)))
+            
+            # Ground
+            Color(0.3, 0.3, 0.3, 1)
+            # Double ground for scrolling effect
+            Rectangle(pos=(self.ground_x, 0), size=(self.width + self.GROUND_HEIGHT, self.GROUND_HEIGHT))
+            Rectangle(pos=(self.ground_x + self.width, 0), size=(self.width + self.GROUND_HEIGHT, self.GROUND_HEIGHT))
+            
+            # Ground line
+            Color(0.2, 0.2, 0.2, 1)
+            Rectangle(pos=(self.ground_x, self.GROUND_HEIGHT), size=(self.width + self.GROUND_HEIGHT, dp(2)))
+            Rectangle(pos=(self.ground_x + self.width, self.GROUND_HEIGHT), size=(self.width + self.GROUND_HEIGHT, dp(2)))
+            
+            # Score
+            Color(0.2, 0.2, 0.2, 1)
+            
+            # Dino
+            dino_h = self.DINO_HEIGHT * 0.6 if self.is_ducking else self.DINO_HEIGHT
+            dino_y = self.dino_y
+            if self.is_ducking:
+                dino_y = self.GROUND_HEIGHT
+            
+            # Dino body
+            Color(0.2, 0.2, 0.2, 1)
+            Rectangle(pos=(self.dino_x, dino_y), size=(self.DINO_WIDTH, dino_h))
+            # Dino eye
+            Color(1, 1, 1, 1)
+            Ellipse(pos=(self.dino_x + self.DINO_WIDTH - dp(8), dino_y + dino_h - dp(10)), size=(dp(6), dp(6)))
+            
+            # Obstacles
+            Color(0.2, 0.2, 0.2, 1)
+            for obs in self.obstacles:
+                if obs['height'] > self.CACTUS_HEIGHT * 0.8:
+                    # Cactus
+                    Rectangle(pos=(obs['x'], obs['y']), size=(obs['width'], obs['height']))
+                    # Cactus arms
+                    Rectangle(pos=(obs['x'] - dp(5), obs['y'] + obs['height'] * 0.4), size=(dp(5), dp(10)))
+                    Rectangle(pos=(obs['x'] + obs['width'], obs['y'] + obs['height'] * 0.6), size=(dp(5), dp(8)))
+                else:
+                    # Bird
+                    Ellipse(pos=(obs['x'], obs['y']), size=(obs['width'], obs['height']))
+                    # Wing
+                    Ellipse(pos=(obs['x'] - dp(5), obs['y'] + dp(5)), size=(dp(15), dp(10)))
+            
+            # Game over overlay
+            if self.game_over:
+                Color(0, 0, 0, 0.7)
+                Rectangle(pos=self.pos, size=self.size)
+                Color(1, 1, 1, 1)
+                # Would draw "GAME OVER" text here - simplified for now
+            
+            # Score
+            Color(0.2, 0.2, 0.2, 1)
+            # Score display - using a simple rectangle as placeholder
+            Rectangle(pos=(self.width - dp(120), self.height - dp(50)), size=(dp(100), dp(30)))
+
+
+# --------------------------------------------------------------------------
 # Row layout: BoxLayout with size_hint_x proportional to span, plus gaps
 # --------------------------------------------------------------------------
 class KeyRow(BoxLayout):
@@ -435,6 +881,10 @@ ROW_5 = [
 
 ROWS = [ROW_1, ROW_2, ROW_3, ROW_4, ROW_5]
 
+# Shared bar keys: the game button (T-Rex runner) and the hide button.
+GAME_KEY = {"label": "\U0001f996", "action": "game"}
+HIDE_KEY = {"label": "\u25bc", "action": "hide", "long_press": "toggle_hide_rows"}
+
 ENGLISH_BAR = [
     {"label": "TAB", "action": "key_event", "value": "tab"},
     {"label": "", "action": "noop"},
@@ -447,7 +897,8 @@ ENGLISH_BAR = [
     {"label": "\u21e8", "action": "key_event", "value": "right"},
     {"label": "DT", "action": "datetime"},
     {"label": "W", "action": "weekday"},
-    {"label": "\u25bc", "action": "hide", "long_press": "toggle_hide_rows"},
+    GAME_KEY,
+    HIDE_KEY,
 ]
 
 
@@ -565,8 +1016,15 @@ class ImeKeyboard(BoxLayout):
                 self.bridge.toggle_mode()
             return
         if action == "hide":
+            # Hiding the keyboard always returns to typing (Chinese) mode:
+            # leave the game first, otherwise the next show starts in it.
+            if getattr(self, "_game_mode", False):
+                self._exit_game()
             if self.bridge:
                 self.bridge.hide()
+            return
+        if action == "game":
+            self._toggle_game()
             return
         if action == "noop":
             return
@@ -627,7 +1085,7 @@ class ImeKeyboard(BoxLayout):
         self._bar_box.add_widget(buffer_key)
 
         scroll = ScrollView(do_scroll_x=True, do_scroll_y=False,
-                            size_hint_x=9.0 / self.COLUMNS, bar_width=0)
+                            size_hint_x=8.0 / self.COLUMNS, bar_width=0)
         self._chips_box = BoxLayout(orientation="horizontal", spacing=0,
                                     size_hint_x=None)
         self._chips_box.bind(
@@ -635,7 +1093,12 @@ class ImeKeyboard(BoxLayout):
         scroll.add_widget(self._chips_box)
         self._bar_box.add_widget(scroll)
 
-        hide = self._make_key(ENGLISH_BAR[-1], font_size=sp(14))
+        # T-Rex runner (tap = jump, swipe down = duck)
+        game = self._make_key(GAME_KEY, font_size=sp(14))
+        game.size_hint_x = 1.0 / self.COLUMNS
+        self._bar_box.add_widget(game)
+
+        hide = self._make_key(HIDE_KEY, font_size=sp(14))
         hide.size_hint_x = 1.0 / self.COLUMNS
         self._bar_box.add_widget(hide)
 
@@ -699,9 +1162,51 @@ class ImeKeyboard(BoxLayout):
         self._rebuild_bar()
         self._rebuild_rows()
 
+    # -- game mode -----------------------------------------------------
+    def _toggle_game(self):
+        if hasattr(self, '_game_mode') and self._game_mode:
+            self._exit_game()
+        else:
+            self._enter_game()
+
+    def _enter_game(self):
+        self._game_mode = True
+        # Save current state
+        self._saved_english = self.english
+        self._saved_buffer = self.buffer
+        self._saved_candidates = self.candidates
+        
+        # Switch to game widget
+        self.clear_widgets()
+        self._game_widget = GameWidget(on_exit=self._exit_game)
+        self.add_widget(self._game_widget)
+        self.height = self.bar_h + self.body_h + self.pad
+
+    def _exit_game(self):
+        if not hasattr(self, '_game_mode') or not self._game_mode:
+            return
+        self._game_mode = False
+        GameSounds.stop_music()
+        
+        # Restore keyboard
+        self.clear_widgets()
+        self._build()
+        
+        # Restore state
+        self.english = self._saved_english
+        self.buffer = self._saved_buffer
+        self.candidates = self._saved_candidates
+        self._refresh_bar()
+
     # -- bridge --------------------------------------------------------
     def on_bridge_message(self, message):
         """Called on the Kivy main thread."""
+        # The IME only talks to the keyboard, never to the game: any message
+        # means the user is back to typing, so drop out of game mode. This
+        # covers the ▼ key, the Back key and an app/IME switch alike.
+        if getattr(self, "_game_mode", False):
+            self._exit_game()
+
         kind = message.get("type")
         if kind == "candidates":
             self.buffer = message.get("buffer") or ""
