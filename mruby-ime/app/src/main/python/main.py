@@ -1,9 +1,13 @@
-from kivy.app import App
-from kivy.uix.label import Label
+"""Entry point for the Kivy front-end (python-for-android ``source.dir``)."""
 
-class MyApp(App):
-    def build(self):
-        return Label(text='Hello World')
+import os
+import sys
 
-if __name__ == '__main__':
-    MyApp().run()
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+from kivy_ime.keyboard import KivyIMEApp  # noqa: E402
+
+if __name__ == "__main__":
+    KivyIMEApp().run()

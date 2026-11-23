@@ -19,7 +19,9 @@ cd "$here"
 export JAVA_HOME=/opt/android-studio/jbr
 export ANDROID_SDK_ROOT=/home/cc/Android/Sdk
 export ANDROID_NDK_HOME=/home/cc/Android/Sdk/ndk/30.0.16248370
-export PATH="/home/cc/Desktop/mrubyime_mini/kivy-venv/bin:$PATH"
+# pyjnius' build backend shells out to `javac`; JAVA_HOME alone is not
+# enough because it looks it up on PATH (fails with "Unable to find javac").
+export PATH="$JAVA_HOME/bin:/home/cc/Desktop/mrubyime_mini/kivy-venv/bin:$PATH"
 hash -r
 
 command="${1:-debug}"

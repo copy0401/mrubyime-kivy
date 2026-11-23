@@ -21,6 +21,7 @@ import android.view.inputmethod.EditorInfo
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.PrintWriter
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import kotlin.math.roundToInt
@@ -1166,6 +1167,57 @@ class MrubyimeIME : InputMethodService() {
     fun onEnterPressedPublic() = onEnterPressed()
     fun toggleModePublic() { isEnglishMode = !isEnglishMode; applyModeSwitch() }
     fun clearCompositionAndHide() { clearCompositionBeforeHide(); requestHideSelf(0) }
+
+    /** Read by [KivyBridge] so the Python UI can mirror the engine mode. */
+    fun isEnglishModePublic(): Boolean = isEnglishMode
+
+    /**
+     * Commits candidate [index] exactly as a tap on the Kotlin candidate chip
+     * would, including entries past the 10 `%selkey` digits.
+     */
+    fun commitCandidatePublic(index: Int) {
+        if (!engineReady) return
+        if (index !in candidates.indices) return
+        selectedCandidateIndex = index
+        commit(candidates[index])
+    }
+
+    /**
+     * Entry point for the Kivy front-end: mirrors the DSL action names that
+     * [KeyboardView] dispatches, so both front-ends behave identically.
+     */
+    fun onKivyAction(type: String, value: String?) {
+        when (type) {
+            "key_event", "combo" -> value?.let { interactionListener.onKeyCombo(it) }
+            "clipboard" -> when (value) {
+                "select_all" -> interactionListener.onSelectAll()
+                "copy" -> interactionListener.onCopy()
+                "paste" -> interactionListener.onPaste()
+            }
+            "date" -> interactionListener.onCommitText(
+                java.text.SimpleDateFormat(value ?: "yyyy-MM-dd", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+            )
+            "time" -> interactionListener.onCommitText(
+                java.text.SimpleDateFormat(value ?: "HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+            )
+            "weekday" -> interactionListener.onCommitText(
+                java.text.SimpleDateFormat(value ?: "EEEE", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+            )
+            "datetime" -> interactionListener.onCommitText(
+                java.text.SimpleDateFormat(value ?: "yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+            )
+            "cursor_left" -> interactionListener.onMoveCursor(false)
+            "cursor_right" -> interactionListener.onMoveCursor(true)
+            "commit_buffer" -> interactionListener.onCommitBuffer()
+            "commit_inline" -> interactionListener.onCommitInlineComposing()
+            "toggle_hide_rows" -> interactionListener.onToggleHideKeyRows()
+            "text" -> value?.let { interactionListener.onCommitText(it) }
+        }
+    }
 }
 
 /**
@@ -1185,7 +1237,9 @@ class KivyBridge(private val ime: MrubyimeIME) {
     fun start() {
         serverThread = Thread {
             try {
-                serverSocket = ServerSocket(PORT, 1, java.net.InetAddress.getByName("127.0.0.1"))
+                // Bind to 0.0.0.0 so the Kivy app (separate process, different UID)
+                // can connect via localhost. The INTERNET permission is required.
+                serverSocket = ServerSocket(PORT, 1, InetAddress.getByName("0.0.0.0"))
                 Log.i("MrubyimeJNI", "KivyBridge server listening on port $PORT")
                 while (!Thread.currentThread().isInterrupted) {
                     val client = serverSocket!!.accept()
@@ -1206,23 +1260,37 @@ class KivyBridge(private val ime: MrubyimeIME) {
         serverThread?.start()
     }
 
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
     private fun handleCommand(line: String) {
-        try {
-            val json = org.json.JSONObject(line)
-            val type = json.getString("type")
-            when (type) {
-                "key" -> {
-                    val ch = json.getString("char").first()
-                    ime.onKeyPressedPublic(ch)
-                }
-                "backspace" -> ime.onBackspacePressedPublic()
-                "space" -> ime.onSpacePressedPublic()
-                "enter" -> ime.onEnterPressedPublic()
-                "toggle_mode" -> ime.toggleModePublic()
-                "hide" -> ime.clearCompositionAndHide()
-            }
+        val json = try {
+            org.json.JSONObject(line)
         } catch (e: Exception) {
             Log.e("MrubyimeJNI", "Failed to parse command: $line", e)
+            return
+        }
+        val type = json.optString("type")
+        // Engine and view state are main-thread only; this reader runs on the
+        // socket thread, so hand every command over instead of touching them.
+        mainHandler.post {
+            try {
+                dispatch(json, type)
+            } catch (e: Exception) {
+                Log.e("MrubyimeJNI", "Failed to run command: $line", e)
+            }
+        }
+    }
+
+    private fun dispatch(json: org.json.JSONObject, type: String) {
+        when (type) {
+            "key" -> ime.onKeyPressedPublic(json.getString("char").first())
+            "backspace" -> ime.onBackspacePressedPublic()
+            "space" -> ime.onSpacePressedPublic()
+            "enter" -> ime.onEnterPressedPublic()
+            "toggle_mode" -> ime.toggleModePublic()
+            "hide" -> ime.clearCompositionAndHide()
+            "candidate" -> ime.commitCandidatePublic(json.optInt("index", -1))
+            else -> ime.onKivyAction(type, json.optString("value", null))
         }
     }
 
@@ -1232,6 +1300,7 @@ class KivyBridge(private val ime: MrubyimeIME) {
         json.put("type", "candidates")
         json.put("buffer", buffer)
         json.put("candidates", org.json.JSONArray(candidates))
+        json.put("english", ime.isEnglishModePublic())
         writer.println(json.toString())
         writer.flush()
     }
