@@ -94,23 +94,51 @@ CLEAR = (1.0, 1.0, 1.0, 0.0)
 # --------------------------------------------------------------------------
 # Fonts: Roboto has no CJK glyphs, so bind a system CJK face.
 # --------------------------------------------------------------------------
+# Bundled font first: Unifont-T ships in the APK (assets/unifont_t.otf in the
+# private bundle) and, unlike the device CJK faces, it also carries the glyphs
+# the keyboard labels need -- backspace U+232B, enter U+23CE, the arrow set and
+# box-drawing characters. The system faces stay as a fallback.
+def _bundled_font_paths():
+    """Where Unifont-T lives at runtime: unpacked next to our sources.
+
+    On device p4a extracts the private bundle to
+    ``filesDir/app/``, so the font sits at ``filesDir/app/assets/`` and
+    this module is one level deeper (``filesDir/app/kivy_ime/``).
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    roots = [os.getcwd(), os.path.dirname(os.getcwd()),
+             here, os.path.dirname(here)]
+    for root in roots:
+        if not root:
+            continue
+        candidate = os.path.join(root, "assets", "unifont_t.otf")
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def _desktop_font_paths():
+    return (
+        # host build & smoke tests
+        "/home/cc/Desktop/mrubyime_mini/unifont_t.otf",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    )
+
+
 _CJK_CANDIDATES = (
+    _bundled_font_paths(),
+    *_desktop_font_paths(),
     "/system/fonts/NotoSansCJK-Regular.ttc",
     "/system/fonts/NotoSansCJKsc-Regular.otf",
     "/system/fonts/NotoSansSC-Regular.otf",
     "/system/fonts/DroidSansFallback.ttf",
     "/system/fonts/DroidSansFallbackFull.ttf",
-    # desktop (host smoke tests)
-    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/noto-cjk/NotoSansCJK-Light.ttc",
 )
 
 
 def _register_cjk_font():
     for path in _CJK_CANDIDATES:
-        if not os.path.exists(path):
+        if not path or not os.path.exists(path):
             continue
         try:
             LabelBase.register(name="IME", fn_regular=path)
@@ -202,12 +230,12 @@ class DinoGlyph(Widget):
 # --------------------------------------------------------------------------
 class GameSounds:
     """Game sound effects and background music."""
-    
+
     _jump_sound = None
     _hit_sound = None
     _bg_music = None
     _tried = False
-    
+
     JUMP_PATHS = (
         "/system/media/audio/ui/KeypressStandard.ogg",
         "/system/media/audio/ui/KeypressSpacebar.ogg",
@@ -220,7 +248,7 @@ class GameSounds:
         "/system/media/audio/ringtones/Luna.ogg",
         "/system/media/audio/ringtones/Orion.ogg",
     )
-    
+
     @classmethod
     def _load(cls):
         cls._tried = True
@@ -255,7 +283,7 @@ class GameSounds:
             print("kivy-ime: no hit sound available", flush=True)
         if not cls._bg_music:
             print("kivy-ime: no background music available", flush=True)
-    
+
     @classmethod
     def play_jump(cls):
         if not cls._tried:
@@ -265,7 +293,7 @@ class GameSounds:
                 cls._jump_sound.play()
             except Exception:
                 pass
-    
+
     @classmethod
     def play_hit(cls):
         if not cls._tried:
@@ -275,7 +303,7 @@ class GameSounds:
                 cls._hit_sound.play()
             except Exception:
                 pass
-    
+
     @classmethod
     def start_music(cls):
         if not cls._tried:
@@ -285,7 +313,7 @@ class GameSounds:
                 cls._bg_music.play()
             except Exception:
                 pass
-    
+
     @classmethod
     def stop_music(cls):
         if cls._bg_music:
@@ -602,7 +630,7 @@ class Chip(Widget):
 # --------------------------------------------------------------------------
 class GameWidget(Widget):
     """T-Rex runner game widget."""
-    
+
     # Game constants
     DINO_WIDTH = dp(40)
     DINO_HEIGHT = dp(44)
@@ -613,37 +641,37 @@ class GameWidget(Widget):
     GRAVITY = dp(1500)
     GAME_SPEED = dp(300)
     SPEED_INCREASE = dp(10)
-    
+
     def __init__(self, on_exit=None, **kwargs):
         super().__init__(**kwargs)
         self.on_exit = on_exit
         self.size_hint = (1, 1)
-        
+
         # Game state
         self.running = False
         self.game_over = False
         self.score = 0
         self.high_score = 0
         self.speed = self.GAME_SPEED
-        
+
         # Dino state
         self.dino_x = dp(50)
         self.dino_y = self.GROUND_HEIGHT
         self.dino_vel_y = 0
         self.is_jumping = False
         self.is_ducking = False
-        
+
         # Obstacles
         self.obstacles = []  # list of (x, width, height, is_bird)
         self.spawn_timer = 0
         self.spawn_interval = 1.5
-        
+
         # Ground
         self.ground_x = 0
-        
+
         # Clouds
         self.clouds = []
-        
+
         # Touch tracking
         self._touch_start = None
         self._swipe = None
@@ -664,12 +692,12 @@ class GameWidget(Widget):
 
         # Bind size
         self.bind(size=self._on_size, pos=self._on_pos)
-        
+
         # Game loop
         self._game_clock = Clock.schedule_interval(self._update, 1/60)
         # Start immediately; _on_size also resets once a real size arrives.
         Clock.schedule_once(lambda _dt: self._reset_game(), 0)
-    
+
     def _on_size(self, *args):
         if not self.running and not self.game_over and self.width > 0 and self.height > 0:
             self._reset_game()
@@ -697,7 +725,7 @@ class GameWidget(Widget):
             self.center_x - ow / 2.0,
             self.center_y - oh / 2.0,
         )
-    
+
     def _reset_game(self):
         self.running = True
         self.game_over = False
@@ -723,40 +751,40 @@ class GameWidget(Widget):
         self._over_label.text = ""
         self._update_score_text()
         self._sync_overlays()
-    
+
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos):
             return False
-        
+
         if self.game_over:
             # Restart game
             self._reset_game()
             return True
-        
+
         self._touch_start = (touch.x, touch.y)
         self._swipe = None          # None | "jump" | "duck"
         touch.grab(self)
         return True
-    
+
     def on_touch_move(self, touch):
         if touch.grab_current is not self:
             return False
-        
+
         if self._touch_start is None:
             self._touch_start = (touch.x, touch.y)
-        
+
         dy = touch.y - self._touch_start[1]
         threshold = dp(30)
-        
+
         # Swipe down -> duck (live), swipe up -> arm a jump
         if dy < -threshold and not self.is_jumping:
             self._swipe = "duck"
             self.is_ducking = True
         elif dy > threshold:
             self._swipe = "jump"
-        
+
         return True
-    
+
     def on_touch_up(self, touch):
         if touch.grab_current is not self:
             return False
@@ -765,55 +793,55 @@ class GameWidget(Widget):
         swipe = self._swipe
         self._touch_start = None
         self._swipe = None
-        
+
         if swipe == "duck":
             # Release the duck now that the finger lifted.
             self.is_ducking = False
             return True
-        
+
         if not self.is_jumping:
             # Tap (or swipe up) -> jump.
             self.is_jumping = True
             self.dino_vel_y = self.JUMP_VELOCITY
             self.is_ducking = False
             GameSounds.play_jump()
-        
+
         return True
-    
+
     def _update(self, dt):
         if not self.running or self.game_over:
             return
-        
+
         # Update dino physics
         if self.is_jumping:
             self.dino_vel_y -= self.GRAVITY * dt
             self.dino_y += self.dino_vel_y * dt
-            
+
             if self.dino_y <= self.GROUND_HEIGHT:
                 self.dino_y = self.GROUND_HEIGHT
                 self.dino_vel_y = 0
                 self.is_jumping = False
-        
+
         # Ducking reduces height
         dino_height = self.DINO_HEIGHT * 0.6 if self.is_ducking else self.DINO_HEIGHT
-        
+
         # Update ground
         self.ground_x -= self.speed * dt
         if self.ground_x <= -self.width:
             self.ground_x = 0
-        
+
         # Update clouds
         for cloud in self.clouds:
             cloud['x'] -= cloud['speed'] * self.speed * dt
             if cloud['x'] < -dp(100):
                 cloud['x'] = self.width + random.uniform(0, self.width)
-        
+
         # Spawn obstacles
         self.spawn_timer += dt
         if self.spawn_timer >= self.spawn_interval:
             self.spawn_timer = 0
             self._spawn_obstacle()
-        
+
         # Update obstacles
         for obs in self.obstacles[:]:
             obs['x'] -= self.speed * dt
@@ -824,7 +852,7 @@ class GameWidget(Widget):
                 self.speed += self.SPEED_INCREASE
                 # Decrease spawn interval slightly
                 self.spawn_interval = max(0.8, self.spawn_interval - 0.02)
-        
+
         # Check collisions
         dino_rect = (self.dino_x, self.dino_y, self.DINO_WIDTH, dino_height)
         for obs in self.obstacles:
@@ -832,11 +860,11 @@ class GameWidget(Widget):
             if self._rects_collide(dino_rect, obs_rect):
                 self._game_over()
                 break
-        
+
         # Update score display
         self._update_score_text()
         self.draw()
-    
+
     def _spawn_obstacle(self):
         # Randomly choose cactus or bird
         if random.random() < 0.7:
@@ -849,20 +877,20 @@ class GameWidget(Widget):
             width = dp(30)
             height = dp(30)
             y = self.GROUND_HEIGHT + random.uniform(dp(40), dp(100))
-        
+
         self.obstacles.append({
             'x': self.width,
             'y': y,
             'width': width,
             'height': height
         })
-    
+
     def _rects_collide(self, rect1, rect2):
         x1, y1, w1, h1 = rect1
         x2, y2, w2, h2 = rect2
         return (x1 < x2 + w2 and x1 + w1 > x2 and
                 y1 < y2 + h2 and y1 + h1 > y2)
-    
+
     def _game_over(self):
         self.game_over = True
         self.running = False
@@ -873,7 +901,7 @@ class GameWidget(Widget):
         self._over_label.text = "GAME OVER - TAP TO RETRY"
         self._update_score_text()
         self._sync_overlays()
-    
+
     def _update_score_text(self):
         """HI + current score, zero-padded like the Chrome dino."""
         self._score_label.text = "HI %05d   %05d" % (self.high_score, self.score)
@@ -893,40 +921,40 @@ class GameWidget(Widget):
             # Sky background
             Color(0.95, 0.95, 0.95, 1)
             Rectangle(pos=self.pos, size=self.size)
-            
+
             # Clouds
             Color(0.7, 0.7, 0.7, 0.8)
             for cloud in self.clouds:
                 Ellipse(pos=(cloud['x'], cloud['y']), size=(dp(60), dp(30)))
                 Ellipse(pos=(cloud['x'] + dp(20), cloud['y'] - dp(5)), size=(dp(40), dp(20)))
-            
+
             # Ground
             Color(0.3, 0.3, 0.3, 1)
             # Double ground for scrolling effect
             Rectangle(pos=(self.ground_x, 0), size=(self.width + self.GROUND_HEIGHT, self.GROUND_HEIGHT))
             Rectangle(pos=(self.ground_x + self.width, 0), size=(self.width + self.GROUND_HEIGHT, self.GROUND_HEIGHT))
-            
+
             # Ground line
             Color(0.2, 0.2, 0.2, 1)
             Rectangle(pos=(self.ground_x, self.GROUND_HEIGHT), size=(self.width + self.GROUND_HEIGHT, dp(2)))
             Rectangle(pos=(self.ground_x + self.width, self.GROUND_HEIGHT), size=(self.width + self.GROUND_HEIGHT, dp(2)))
-            
+
             # Score
             Color(0.2, 0.2, 0.2, 1)
-            
+
             # Dino
             dino_h = self.DINO_HEIGHT * 0.6 if self.is_ducking else self.DINO_HEIGHT
             dino_y = self.dino_y
             if self.is_ducking:
                 dino_y = self.GROUND_HEIGHT
-            
+
             # Dino body
             Color(0.2, 0.2, 0.2, 1)
             Rectangle(pos=(self.dino_x, dino_y), size=(self.DINO_WIDTH, dino_h))
             # Dino eye
             Color(1, 1, 1, 1)
             Ellipse(pos=(self.dino_x + self.DINO_WIDTH - dp(8), dino_y + dino_h - dp(10)), size=(dp(6), dp(6)))
-            
+
             # Obstacles
             Color(0.2, 0.2, 0.2, 1)
             for obs in self.obstacles:
@@ -941,7 +969,7 @@ class GameWidget(Widget):
                     Ellipse(pos=(obs['x'], obs['y']), size=(obs['width'], obs['height']))
                     # Wing
                     Ellipse(pos=(obs['x'] - dp(5), obs['y'] + dp(5)), size=(dp(15), dp(10)))
-            
+
             # Game over overlay
             if self.game_over:
                 Color(0, 0, 0, 0.7)
@@ -1002,11 +1030,11 @@ ROW_1 = _text_row("1234567890-=", "!@#$%^&*()_+", "!@#$%^&*()_+")
 ROW_2 = _text_row("qwertyuiop[]", "          {}", "QWERTYUIOP{}")
 ROW_3 = _text_row("asdfghjkl;'\\", "         :\"|", "ASDFGHJKL:\"|")
 ROW_4 = _text_row("zxcvbnm,./`", "       <>?~", "ZXCVBNM<>?~") + [
-    {"label": "\u2b05", "value": None, "action": "backspace", "repeat": True},
+    {"label": "\u232b", "value": None, "action": "backspace", "repeat": True},
 ]
 
 ROW_5 = [
-    {"label": "中", "action": "toggle_mode", "span": 2},
+    {"label": "中/英", "action": "toggle_mode", "span": 2},
     {"label": "", "action": "space", "span": 8, "gestures": {
         "down": {"action": "toggle_mode"},
         "left": {"action": "cursor_left"},
@@ -1026,7 +1054,6 @@ HIDE_KEY = {"label": "\u25bc", "action": "hide", "long_press": "toggle_hide_rows
 
 ENGLISH_BAR = [
     {"label": "TAB", "action": "key_event", "value": "tab"},
-    {"label": "", "action": "noop"},
     {"label": "^A", "action": "clipboard", "value": "select_all"},
     {"label": "^C", "action": "clipboard", "value": "copy"},
     {"label": "^V", "action": "clipboard", "value": "paste"},
@@ -1209,7 +1236,12 @@ class ImeKeyboard(BoxLayout):
     def _make_key(self, spec, font_size=None):
         return Key(
             label=spec.get("label", ""),
-            value=spec.get("value", spec.get("label", "")),
+            # Deliberately NOT defaulting to the label: Key.__init__ decides
+            # that itself, and only for "code" keys. Defaulting here is what
+            # made DT send value="DT" and W send value="W", which Kotlin feeds
+            # to SimpleDateFormat -- "DT" is not a legal pattern (exception) and
+            # "W" is week-in-month (a number, not the weekday name).
+            value=spec.get("value"),
             action=spec.get("action", "code"),
             sub_label=spec.get("sub", ""),
             gestures=spec.get("gestures")
