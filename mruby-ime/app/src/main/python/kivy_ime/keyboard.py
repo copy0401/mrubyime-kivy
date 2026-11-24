@@ -53,19 +53,42 @@ from kivy_ime.bridge import ImeBridge
 # --------------------------------------------------------------------------
 FROSTED = True
 
+# Palette — "flat frost": near-white plates, cool gray seams, no depth.
+#
+# Previous look was #E0E0E0 plates with a #999999 grid and a press that sank
+# the plate by 2 dp. That read as physical keys, which is the opposite of the
+# frosted look the keys now have. This palette is one lift lighter and the
+# seams are pulled down so the keys stay legible over a bright app.
+#
+# Set FLAT_FROST = False to return to the old #E0E0E0 / #999999 palette.
+FLAT_FROST = True
+
 INK = (0.0, 0.0, 0.0, 1.0)
 MUTED = (0.4, 0.4, 0.4, 1.0)
 # Plate alpha: keys/chips/bar. Opaque when FROSTED is off.
-PLATE_A = 0.78 if FROSTED else 1.0
+PLATE_A = 0.68 if FROSTED else 1.0
 # Frost veil behind everything, over the live app content.
-FROST_A = 0.55 if FROSTED else 1.0
+FROST_A = 0.42 if FROSTED else 1.0
 FROST_TINT = (1.0, 1.0, 1.0)      # white veil
-BAR_BG = (224 / 255.0, 224 / 255.0, 224 / 255.0, PLATE_A)
-KEY_BG = (224 / 255.0, 224 / 255.0, 224 / 255.0, PLATE_A)
-KEY_PRESSED = (204 / 255.0, 204 / 255.0, 204 / 255.0, min(1.0, PLATE_A + 0.15))
-SEAM = (153 / 255.0, 153 / 255.0, 153 / 255.0, 1.0)
+if FLAT_FROST:
+    _KEY = (1.0, 1.0, 1.0)          # near-white frost plates
+    _SEAM = (0.62, 0.64, 0.67)       # cool gray, still 1 dp visible
+    _PRESS = (0.86, 0.88, 0.91)      # press = a slightly gray plate
+    _BAR = (1.0, 1.0, 1.0)           # the bar is not a different band
+    _CHIP = (1.0, 1.0, 1.0)
+else:
+    _KEY = (224 / 255.0, 224 / 255.0, 224 / 255.0)
+    _SEAM = (153 / 255.0, 153 / 255.0, 153 / 255.0)
+    _PRESS = (204 / 255.0, 204 / 255.0, 204 / 255.0)
+    _BAR = (224 / 255.0, 224 / 255.0, 224 / 255.0)
+    _CHIP = (224 / 255.0, 224 / 255.0, 224 / 255.0)
+
+BAR_BG = _BAR + (PLATE_A,)
+KEY_BG = _KEY + (PLATE_A,)
+KEY_PRESSED = _PRESS + (min(1.0, PLATE_A + 0.22),)
+SEAM = _SEAM + (0.85,)
 # Candidate chips all share one plate (selected is bold, not yellow).
-CHIP_BG = KEY_BG
+CHIP_BG = _CHIP + (PLATE_A,)
 CLEAR = (1.0, 1.0, 1.0, 0.0)
 
 # --------------------------------------------------------------------------
@@ -388,7 +411,9 @@ class Key(Widget):
 
     # -- layout --------------------------------------------------------
     def _sync(self, *_args):
-        inset = self.press * dp(2)
+        # Flat plates: no inset (that is the "3D key press" look). The press only
+        # shifts the plate colour, which reads as feedback without depth.
+        inset = 0
         self._bg.pos = (self.x + inset, self.y + inset)
         self._bg.size = (max(0, self.width - 2 * inset),
                          max(0, self.height - 2 * inset))

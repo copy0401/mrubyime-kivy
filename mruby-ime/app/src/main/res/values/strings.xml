@@ -5,7 +5,7 @@
     <!-- python-for-android bootstrap: sha1 of assets/private.tar. The bundle is
          unpacked into files/app only when this differs from the recorded copy,
          so it must match or the 13 MB bundle is re-extracted on every launch. -->
-    <string name="private_version">2976432af7b7308d1b4abf2ae34f0572dd0fa2f1</string>
+    <string name="private_version">549e9ca1839ce480a0ab244dffe95293f5836291</string>
     <string name="presplash_color">#000000</string>
     <string name="urlScheme">kivy</string>
 </resources>
