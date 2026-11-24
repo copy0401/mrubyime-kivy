@@ -608,6 +608,9 @@ class MrubyimeIME : InputMethodService() {
 
     override fun onCreateInputView(): View {
         if (useKivyFrontend()) {
+            // The Kivy "frosted glass" composites with alpha, so the IME
+            // window's own decor must not paint an opaque plate behind it.
+            window?.window?.decorView?.setBackgroundColor(android.graphics.Color.TRANSPARENT)
             val host = KivyImeHost(this)
             kivyHost = host
             return host.createInputView()

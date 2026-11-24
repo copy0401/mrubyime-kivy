@@ -38,13 +38,31 @@ from kivy.uix.widget import Widget
 from kivy_ime.bridge import ImeBridge
 
 # --------------------------------------------------------------------------
-# Palette (theme :light in keyboard_layout.rb)
+# Palette (theme :light in keyboard_layout.rb) - "frosted glass" variant
+#
+# A real gaussian blur of the app behind the IME window is not available to a
+# Kivy surface (it cannot sample the framebuffer behind its own window), so the
+# frosted look is built from stacked translucency instead:
+#
+#   * the SDL surface itself is translucent (see KivyImeHost / PythonActivity)
+#   * one inset frost plate at FROST alpha blurs nothing but veils the app
+#   * key/chip plates at PLATE alpha sit on top of it
+#   * only the seams, glyphs and rules stay opaque
+#
+# Set FROSTED = False to go back to the flat opaque keyboard.
 # --------------------------------------------------------------------------
+FROSTED = True
+
 INK = (0.0, 0.0, 0.0, 1.0)
 MUTED = (0.4, 0.4, 0.4, 1.0)
-BAR_BG = (245 / 255.0, 245 / 255.0, 245 / 255.0, 1.0)
-KEY_BG = (224 / 255.0, 224 / 255.0, 224 / 255.0, 1.0)
-KEY_PRESSED = (204 / 255.0, 204 / 255.0, 204 / 255.0, 1.0)
+# Plate alpha: keys/chips/bar. Opaque when FROSTED is off.
+PLATE_A = 0.78 if FROSTED else 1.0
+# Frost veil behind everything, over the live app content.
+FROST_A = 0.55 if FROSTED else 1.0
+FROST_TINT = (1.0, 1.0, 1.0)      # white veil
+BAR_BG = (224 / 255.0, 224 / 255.0, 224 / 255.0, PLATE_A)
+KEY_BG = (224 / 255.0, 224 / 255.0, 224 / 255.0, PLATE_A)
+KEY_PRESSED = (204 / 255.0, 204 / 255.0, 204 / 255.0, min(1.0, PLATE_A + 0.15))
 SEAM = (153 / 255.0, 153 / 255.0, 153 / 255.0, 1.0)
 # Candidate chips all share one plate (selected is bold, not yellow).
 CHIP_BG = KEY_BG
@@ -111,6 +129,49 @@ def _register_emoji_font():
 
 
 EMOJI_FONT_NAME = _register_emoji_font()
+
+
+# --------------------------------------------------------------------------
+# Vector dinosaur glyph
+#
+# The Android emoji face (NotoColorEmoji.ttf) is a CBDT *bitmap* font: SDL_ttf
+# cannot scale it, so a 16 sp label renders as nothing at all. Drawing the
+# dino as rectangles needs no font and looks identical on device and desktop.
+# --------------------------------------------------------------------------
+class DinoGlyph(Widget):
+    """Blocky T-rex, sized to its cell."""
+
+    # (x, y, w, h) in units of the cell height; y=0 is the floor.
+    PARTS = (
+        (3.0, 2.0, 5.0, 7.0),    # body
+        (8.0, 7.5, 4.5, 3.5),    # head
+        (7.0, 5.5, 2.0, 2.5),    # neck
+        (1.0, 6.0, 2.5, 2.0),    # tail
+        (3.0, 0.0, 1.6, 2.2),    # back leg
+        (6.0, 0.0, 1.6, 2.2),    # front leg
+    )
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._rects = []
+        with self.canvas:
+            self._body_color = Color(*INK)
+            for cell in self.PARTS:
+                self._rects.append(Rectangle(size=(0, 0)))
+            self._eye_color = Color(1, 1, 1, 1)
+            self._eye = Rectangle(size=(0, 0))
+        self.bind(pos=self._sync, size=self._sync)
+        self._sync()
+
+    def _sync(self, *_args):
+        u = self.height / 14.0
+        left = self.x + (self.width - 10.0 * u) / 2.0
+        base = self.y + (self.height - 11.0 * u) / 2.0
+        for rect, (cx, cy, cw, ch) in zip(self._rects, self.PARTS):
+            rect.pos = (left + cx * u, base + cy * u)
+            rect.size = (cw * u, ch * u)
+        self._eye.pos = (left + 10.4 * u, base + 9.3 * u)
+        self._eye.size = (0.9 * u, 0.9 * u)
 
 
 # --------------------------------------------------------------------------
@@ -291,8 +352,12 @@ class Key(Widget):
         self._long_event = None
         self._long_fired = False
 
+        # A "dino" key is drawn with shapes: the system emoji face is a bitmap
+        # font that SDL_ttf renders blank at key sizes.
+        self._glyph = None
         self._label = Label(
-            text=label, font_name=EMOJI_FONT_NAME if emoji else FONT_NAME,
+            text="" if emoji == "dino" else label,
+            font_name=FONT_NAME,
             font_size=font_size or sp(20), bold=True, color=INK,
             halign="center", valign="middle", size_hint=(None, None),
         )
@@ -302,6 +367,9 @@ class Key(Widget):
         )
         self.add_widget(self._label)
         self.add_widget(self._sub)
+        if emoji == "dino":
+            self._glyph = DinoGlyph(size_hint=(1, 1))
+            self.add_widget(self._glyph)
 
         with self.canvas.before:
             self._bg_color = Color(*KEY_BG)
@@ -336,6 +404,11 @@ class Key(Widget):
         tw, th = self._sub.texture_size
         self._sub.size = (tw, th)
         self._sub.pos = (self.right - tw - dp(4), self.top - th - dp(2))
+
+        # Key is a plain Widget, so children are placed by hand.
+        if self._glyph is not None:
+            self._glyph.pos = self.pos
+            self._glyph.size = self.size
 
         self._seam_right.points = [self.right, self.y, self.right, self.top]
         self._seam_bottom.points = [self.x, self.y, self.right, self.y]
@@ -922,7 +995,8 @@ ROW_5 = [
 ROWS = [ROW_1, ROW_2, ROW_3, ROW_4, ROW_5]
 
 # Shared bar keys: the game button (T-Rex runner) and the hide button.
-GAME_KEY = {"label": "\U0001f996", "action": "game", "emoji": True, "font_size": 16}
+GAME_KEY = {"label": "", "action": "game", "emoji": "dino"}
+BACK_KEY = {"label": "KB", "action": "exit_game", "font_size": 14}
 HIDE_KEY = {"label": "\u25bc", "action": "hide", "long_press": "toggle_hide_rows"}
 
 ENGLISH_BAR = [
@@ -994,7 +1068,26 @@ class ImeKeyboard(BoxLayout):
 
         self._buffer_label = None
         self._chips_box = None
+
+        # Frosted-glass veil: one translucent plate behind the whole keyboard,
+        # so whatever the IME window composites over shows through it.
+        self._frost_color = None
+        self._frost_rect = None
+        if FROSTED:
+            with self.canvas.before:
+                self._frost_color = Color(*(FROST_TINT + (FROST_A,)))
+                self._frost_rect = Rectangle()
+            self.bind(pos=self._paint_frost, size=self._paint_frost)
+            self._paint_frost()
+
         self._build()
+
+    # -- frost ---------------------------------------------------------
+    def _paint_frost(self, *_args):
+        if self._frost_rect is None:
+            return
+        self._frost_rect.pos = self.pos
+        self._frost_rect.size = self.size
 
     # -- measurement ---------------------------------------------------
     def _paint_bar(self, *_args):
@@ -1065,6 +1158,10 @@ class ImeKeyboard(BoxLayout):
             return
         if action == "game":
             self._toggle_game()
+            return
+        if action == "exit_game":
+            # Only reachable from the game bar; a plain ▼ already exits too.
+            self._exit_game()
             return
         if action == "noop":
             return
@@ -1216,23 +1313,62 @@ class ImeKeyboard(BoxLayout):
         self._saved_english = self.english
         self._saved_buffer = self.buffer
         self._saved_candidates = self.candidates
-        
-        # Switch to game widget
+
         self.clear_widgets()
+
+        # The game keeps a bar of its own so ▼ (hide) and "back to the keyboard"
+        # are always reachable -- otherwise the game covers the only exit.
+        bar = BoxLayout(orientation="horizontal", spacing=0,
+                        size_hint_y=None, height=self.bar_h)
+        with bar.canvas.before:
+            Color(*BAR_BG)
+            self._game_bar_bg = Rectangle()
+        bar.bind(pos=self._paint_game_bar, size=self._paint_game_bar)
+
+        back = self._make_key(BACK_KEY, font_size=sp(14))
+        back.size_hint_x = 2.0 / self.COLUMNS
+        bar.add_widget(back)
+
+        hint = Key(
+            label="tap = jump   swipe down = duck",
+            value=None, action="noop", on_commit=self._emit,
+            font_size=sp(13),
+        )
+        hint._label.halign = "left"
+        hint.size_hint_x = 8.0 / self.COLUMNS
+        bar.add_widget(hint)
+
+        hide = self._make_key(HIDE_KEY, font_size=sp(14))
+        hide.size_hint_x = 1.0 / self.COLUMNS
+        bar.add_widget(hide)
+
+        self.add_widget(bar)
         self._game_widget = GameWidget(on_exit=self._exit_game)
         self.add_widget(self._game_widget)
         self.height = self.bar_h + self.body_h + self.pad
+
+    def _paint_game_bar(self, *_args):
+        for child in self.children:
+            if isinstance(child, BoxLayout) and getattr(self, "_game_bar_bg", None):
+                self._game_bar_bg.pos = child.pos
+                self._game_bar_bg.size = child.size
+                break
 
     def _exit_game(self):
         if not hasattr(self, '_game_mode') or not self._game_mode:
             return
         self._game_mode = False
         GameSounds.stop_music()
-        
-        # Restore keyboard
+        self._over_label = None
+
+        # Restore keyboard. clear_widgets() drops the bar and rows *containers*
+        # too, so they must go back before _build() refills them -- otherwise
+        # the IME window is an empty (white) SDL surface.
         self.clear_widgets()
+        self.add_widget(self._bar_box)
+        self.add_widget(self._rows_box)
         self._build()
-        
+
         # Restore state
         self.english = self._saved_english
         self.buffer = self._saved_buffer
@@ -1267,7 +1403,7 @@ class KivyIMEApp(App):
     title = "mruby-ime"
 
     def build(self):
-        Window.clearcolor = (1, 1, 1, 1)
+        Window.clearcolor = (1, 1, 1, 0.0 if FROSTED else 1.0)
         self.bridge = ImeBridge(on_message=self._on_bridge_message)
         self.keyboard = ImeKeyboard(bridge=self.bridge)
         root = AnchorLayout(anchor_x="center", anchor_y="bottom")

@@ -110,6 +110,7 @@ class KivyImeHost(private val service: MrubyimeIME) {
             // otherwise it measures unconstrained and takes the whole screen.
             container.addView(layout, ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, imeHeightPx()))
+            sdl.imeSetTranslucentSurface()
 
             // Same env vars p4a's PythonActivity sets before running main.py.
             val entryPoint = PythonActivity.getEntryPoint(appRoot.absolutePath)

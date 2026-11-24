@@ -54,6 +54,23 @@ public class SDLImeBootstrap extends SDLActivity {
         return mLayout;
     }
 
+    /**
+     * Makes the SDL surface translucent so the Kivy canvas can composite with
+     * alpha (the frosted-glass plates need it). Without TRANSLUCENT the
+     * surface drops its alpha channel and everything renders opaque.
+     *
+     * Must be called after the SurfaceView exists, i.e. after
+     * {@link #imeFinishLoad()}.
+     */
+    public void imeSetTranslucentSurface() {
+        SurfaceView surface = mSurface;
+        if (surface == null) {
+            android.util.Log.v("SDL", "imeSetTranslucentSurface: no surface yet");
+            return;
+        }
+        surface.getHolder().setFormat(android.graphics.PixelFormat.TRANSLUCENT);
+    }
+
     public SurfaceView imeGetSurface() {
         return mSurface;
     }
