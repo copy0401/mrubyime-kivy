@@ -183,17 +183,52 @@ row_h = (body_h - 2*outer - gap_v*(len(ROWS)-1)) / len(ROWS)
 
 ## Fonts
 
-CJK glyphs need a system font.  The loader tries these in order:
+**The bundled font is Unifont-T**, shipped inside the APK as
+`app/src/main/python/assets/unifont_t.otf` (5.0 MB). It is a real file at
+runtime because p4a unpacks the private bundle to
+`filesDir/app/`, so `LabelBase.register()` can take the path directly:
+
+```
+filesDir/app/assets/unifont_t.otf     # device (bundled)
+/home/cc/Desktop/mrubyime_mini/unifont_t.otf   # desktop fallback
+```
+
+It was chosen because it covers **every** label the keyboard uses, including
+the glyphs Noto Sans CJK lacks — `⌫ U+232B`, `⏎ U+23CE`, `⇧ ⇩ ⇦ ⇨` and the
+box-drawing set. With Noto those keys rendered as tofu. The catch: Unifont is a
+pixel-style face, so the whole keyboard looks blocky/retro.
+
+`_bundled_font_paths()` probes `cwd/assets`, `dirname(cwd)/assets`, the module
+dir and its parent, so both the device layout and a host run find it. After
+that, `_CJK_CANDIDATES` still lists the system faces as a fallback:
 
 ```
 /system/fonts/NotoSansCJK-Regular.ttc
 /system/fonts/NotoSansCJKsc-Regular.otf
-...
 /usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc  # desktop
 ```
 
-If none is found, it falls back to Roboto (no CJK → tofu).  Change
+If nothing is found it falls back to Roboto (no CJK → tofu).  Change
 `FONT_NAME` or add a path to `_CJK_CANDIDATES`.
+
+`sync_python.sh` ships **non-Python files too**: everything under
+`app/src/main/python/` that is not `.py`/`.pyc` (the font, future images) is
+added to `private.tar` as a new entry, with its parent directory entries, and
+still with mtime/uid/gid zeroed so the bundle sha1 stays deterministic.
+
+---
+
+## Bridge: never send `value: null`
+
+`bridge.send()` drops any payload key whose value is `None`. This is not
+cosmetic — Kotlin's `JSONObject.optString(name, null)` returns the **string**
+`"null"` for a JSON null (`JSONObject.NULL` is a non-null object, so
+`JSON.toString()` falls back to `String.valueOf()`). That string reached
+`SimpleDateFormat` and threw `Illegal pattern character 'n'`, which is exactly
+why the English bar's `DT` and `W` keys silently did nothing.
+`MrubyimeIME.onKivyAction()` also normalises `"null"`/blank to absent, and logs
+`unhandled kivy action: <type>` for anything it does not recognise.
+
 
 ---
 

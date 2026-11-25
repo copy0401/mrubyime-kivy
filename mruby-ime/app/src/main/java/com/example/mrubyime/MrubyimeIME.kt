@@ -1223,7 +1223,13 @@ class MrubyimeIME : InputMethodService() {
      * Entry point for the Kivy front-end: mirrors the DSL action names that
      * [KeyboardView] dispatches, so both front-ends behave identically.
      */
-    fun onKivyAction(type: String, value: String?) {
+    fun onKivyAction(type: String, rawValue: String?) {
+        // Android's JSONObject.optString(name, null) returns the STRING "null"
+        // for a JSON null, because JSONObject.NULL is a non-null object and
+        // JSON.toString() falls back to String.valueOf(). Left alone, that
+        // reaches SimpleDateFormat and throws "Illegal pattern character 'n'"
+        // (this is what broke the DT / W keys). Treat it as absent.
+        val value = rawValue?.takeIf { it.isNotBlank() && it != "null" }
         when (type) {
             "key_event", "combo" -> value?.let { interactionListener.onKeyCombo(it) }
             "clipboard" -> when (value) {
@@ -1253,6 +1259,8 @@ class MrubyimeIME : InputMethodService() {
             "commit_inline" -> interactionListener.onCommitInlineComposing()
             "toggle_hide_rows" -> interactionListener.onToggleHideKeyRows()
             "text" -> value?.let { interactionListener.onCommitText(it) }
+            // A silent no-op here is how DT / W stayed broken unnoticed: log it.
+            else -> android.util.Log.w("MrubyimeJNI", "unhandled kivy action: $type value=$rawValue")
         }
     }
 }

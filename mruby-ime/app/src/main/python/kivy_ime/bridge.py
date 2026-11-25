@@ -106,6 +106,13 @@ class ImeBridge:
     def send(self, **payload):
         if not self._writer:
             return False
+        # Drop keys whose value is None. A JSON null does NOT read back as null
+        # on the Kotlin side: JSONObject.optString(name, null) returns the STRING
+        # "null" (JSONObject.NULL is a non-null object, so JSON.toString() does
+        # String.valueOf(NULL)). That string then reaches SimpleDateFormat and
+        # throws "Illegal pattern character 'n'", which is why DT / W silently
+        # did nothing. Omitting the key lets optString() return its fallback.
+        payload = {k: v for k, v in payload.items() if v is not None}
         try:
             self._writer.write(json.dumps(payload) + "\n")
             self._writer.flush()

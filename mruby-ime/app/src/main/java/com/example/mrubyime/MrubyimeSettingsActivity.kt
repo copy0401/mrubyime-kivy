@@ -24,8 +24,6 @@ import kotlin.math.ceil
 
 class MrubyimeSettingsActivity : Activity() {
     private companion object {
-        const val REQ_LAYOUT_IMPORT = 1001
-        const val REQ_LAYOUT_EXPORT = 1002
         const val REQ_DICT_IMPORT = 2001
         const val REQ_DICT_EXPORT = 2002
     }
@@ -38,9 +36,6 @@ class MrubyimeSettingsActivity : Activity() {
     private lateinit var cbMaxCodeClear: CheckBox
 
     private lateinit var rgInlineMode: RadioGroup
-
-    private lateinit var tvLayoutPath: TextView
-    private lateinit var tvLayoutStatus: TextView
 
     private lateinit var rgDictList: RadioGroup
     private lateinit var tvDictInfo: TextView
@@ -89,7 +84,6 @@ class MrubyimeSettingsActivity : Activity() {
         bindViews()
         initListeners()
         syncValuesFromPrefs()
-        updateLayoutInfo()
         refreshDictList()
         applyTheme()
         normalizeButtonWidths()
@@ -108,9 +102,6 @@ class MrubyimeSettingsActivity : Activity() {
         cbClearDeadCode = findViewById(R.id.cb_clear_dead_code)
         cbMaxCodeClear = findViewById(R.id.cb_max_code_clear)
         rgInlineMode = findViewById(R.id.rg_inline_mode)
-
-        tvLayoutPath = findViewById(R.id.tv_layout_path)
-        tvLayoutStatus = findViewById(R.id.tv_layout_status)
 
         rgDictList = findViewById(R.id.rg_dict_list)
         tvDictInfo = findViewById(R.id.tv_dict_info)
@@ -167,33 +158,6 @@ class MrubyimeSettingsActivity : Activity() {
         findViewById<Button>(R.id.btn_dict_export).setOnClickListener { launchDictExport() }
         findViewById<Button>(R.id.btn_dict_reset).setOnClickListener { resetDictionary() }
 
-        // Keyboard layout DSL (layouts/keyboard.rb)
-        findViewById<Button>(R.id.btn_layout_import).setOnClickListener { launchLayoutImport() }
-        findViewById<Button>(R.id.btn_layout_export).setOnClickListener { launchLayoutExport() }
-        findViewById<Button>(R.id.btn_layout_install_dir).setOnClickListener { installLayoutToEditDir() }
-        findViewById<Button>(R.id.btn_layout_reset).setOnClickListener { resetLayoutToBuiltin() }
-        findViewById<Button>(R.id.btn_layout_open_editor).setOnClickListener { openLayoutInEditor() }
-    }
-
-    // ------------------------------------------------------------ layout DSL
-
-    private fun launchLayoutImport() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-        }
-        startActivityForResult(intent, REQ_LAYOUT_IMPORT)
-    }
-
-    private fun launchLayoutExport() {
-        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            // text/plain makes Downloads append its own ".txt" (keyboard.rb.txt);
-            // this MIME is unknown to MimeTypeMap, so the .rb name is kept as typed.
-            type = "text/x-ruby"
-            putExtra(Intent.EXTRA_TITLE, "keyboard.rb")
-        }
-        startActivityForResult(intent, REQ_LAYOUT_EXPORT)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -201,8 +165,6 @@ class MrubyimeSettingsActivity : Activity() {
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         when (requestCode) {
-            REQ_LAYOUT_IMPORT -> importLayoutFromUri(uri)
-            REQ_LAYOUT_EXPORT -> exportLayoutToUri(uri)
             REQ_DICT_IMPORT -> importDictFromUri(uri)
             REQ_DICT_EXPORT -> exportDictToUri(uri)
         }
@@ -343,161 +305,6 @@ class MrubyimeSettingsActivity : Activity() {
         null
     }
 
-    private fun currentLayoutSource(): String? =
-        KeyboardLayoutFiles.keyboardSource(this) ?: KeyboardLayoutFiles.builtinSource(this)
-
-    private fun importLayoutFromUri(uri: Uri) {
-        val text = readTextFromUri(uri)
-        if (text == null) {
-            setLayoutStatus("✗ 匯入失敗：讀不到檔案，或檔案超過 64 KB")
-            return
-        }
-        val result = KeyboardLayoutRepository.validateSourceDirect(text)
-        val layout = result.layout
-        if (layout == null) {
-            setLayoutStatus(
-                "✗ 匯入失敗：" + describeLayoutError(text, result.error ?: "DSL 無法編譯")
-            )
-            return
-        }
-        if (!KeyboardLayoutFiles.install(this, text)) {
-            setLayoutStatus("✗ 匯入失敗：無法寫入編輯目錄")
-            return
-        }
-        setLayoutStatus("✓ 匯入成功：pages=${layout.pages.map { it.name }}")
-        updateLayoutInfo()
-    }
-
-    /**
-     * Turns the sandbox's "line 7:3: syntax error, unexpected …" into a
-     * message that also quotes the offending source line, so a bad import can
-     * point at the exact place to fix.
-     */
-    private fun describeLayoutError(source: String, message: String): String {
-        val srcLines = source.lines()
-        fun sourceLine(n: Int): String? =
-            srcLines.getOrNull(n - 1)?.trim()?.takeIf { it.isNotEmpty() }
-        fun lineLabel(n: Int, col: Int): String =
-            if (col > 0) "第 $n 行（第 $col 欄）" else "第 $n 行"
-
-        val out = StringBuilder()
-        var structured = 0
-        for (raw in message.trim().lines()) {
-            val line = raw.trim()
-            if (line.isEmpty()) continue
-            val m = Regex("^line\\s+(\\d+)(?::(\\d+))?\\s*:?\\s*(.*)$").find(line)
-            if (m == null) {
-                out.append(line).append('\n')
-                continue
-            }
-            val n = m.groupValues[1].toIntOrNull() ?: 0
-            val col = m.groupValues[2].toIntOrNull() ?: 0
-            out.append(lineLabel(n, col))
-            sourceLine(n)?.let { out.append("：").append(it) }
-            out.append('\n')
-            out.append("　　").append(m.groupValues[3]).append('\n')
-            structured++
-        }
-        if (structured == 0) {
-            // Runtime errors look like: undefined method 'x' (keyboard.rb:12:in …)
-            Regex(":(\\d+)(?=[:)]|$)").find(message)?.groupValues?.get(1)?.toIntOrNull()?.let { n ->
-                out.append(lineLabel(n, 0))
-                sourceLine(n)?.let { out.append("：").append(it) }
-                out.append('\n')
-                structured++
-            }
-        }
-        val body = out.toString().trimEnd().ifEmpty { message.trim() }
-        return if (structured > 0) body else "$body（logcat: MrubyimeJNI）"
-    }
-
-    private fun exportLayoutToUri(uri: Uri) {
-        val source = currentLayoutSource()
-        if (source == null) {
-            setLayoutStatus("✗ 匯出失敗：找不到來源")
-            return
-        }
-        try {
-            contentResolver.openOutputStream(uri)?.use {
-                it.write(source.toByteArray(Charsets.UTF_8))
-            }
-            setLayoutStatus("✓ 已匯出 ${source.toByteArray(Charsets.UTF_8).size} bytes")
-        } catch (t: Throwable) {
-            setLayoutStatus("✗ 匯出失敗：${t.message}")
-        }
-    }
-
-    /** Writes the current layout into the app directories an external editor can reach. */
-    private fun installLayoutToEditDir() {
-        val source = currentLayoutSource()
-        if (source == null) {
-            setLayoutStatus("✗ 寫入失敗：找不到來源")
-            return
-        }
-        if (!KeyboardLayoutFiles.install(this, source)) {
-            setLayoutStatus("✗ 寫入失敗：超過 64 KB 或目錄不可寫")
-            return
-        }
-        setLayoutStatus("✓ 已寫入編輯目錄（可用檔案管理器編輯）")
-        updateLayoutInfo()
-    }
-
-    private fun resetLayoutToBuiltin() {
-        val removed = KeyboardLayoutFiles.restoreBuiltin(this)
-        setLayoutStatus(if (removed > 0) "✓ 已恢復內建佈局（移除 $removed 個檔案）" else "目前已是內建佈局")
-        updateLayoutInfo()
-    }
-
-    /**
-     * Opens `keyboard.rb` through LayoutFileProvider (`content://…/keyboard.rb`)
-     * so a SAF / share aware editor can read and write the same file the IME
-     * loads.
-     */
-    private fun openLayoutInEditor() {
-        if (!KeyboardLayoutFiles.hasUserLayout(this) && !KeyboardLayoutFiles.exportBuiltin(this)) {
-            setLayoutStatus("✗ 無法建立 keyboard.rb")
-            return
-        }
-        updateLayoutInfo()
-        val file = KeyboardLayoutFiles.keyboardFile(this)
-        try {
-            val uri = LayoutFileProvider.uriFor("$packageName.layouts", file)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "text/plain")
-                addFlags(
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            }
-            startActivity(intent)
-            setLayoutStatus("✓ 已交給外部編輯器（存檔後回到鍵盤即生效）")
-        } catch (t: Throwable) {
-            setLayoutStatus("✗ 找不到可開啟文字檔的 App；請改用「匯出」或「寫入編輯目錄」")
-        }
-    }
-
-    private fun setLayoutStatus(text: String) {
-        tvLayoutStatus.text = text
-    }
-
-    /** Shows where `keyboard.rb` lives and which layout is currently active. */
-    private fun updateLayoutInfo() {
-        KeyboardLayoutFiles.sync(this)
-        val internal = KeyboardLayoutFiles.layoutDir(this)
-        val mirror = KeyboardLayoutFiles.mirrorDir(this)
-        tvLayoutPath.text = buildString {
-            append("編輯目錄：").append((mirror ?: internal).absolutePath)
-            if (mirror != null && mirror.absolutePath != internal.absolutePath) {
-                append("\nroot/Shizuku：").append(internal.absolutePath)
-            }
-        }
-        tvLayoutStatus.text = if (KeyboardLayoutFiles.hasUserLayout(this)) {
-            "目前：使用者佈局 keyboard.rb"
-        } else {
-            "目前：內建佈局（匯出或寫入後即可用外部編輯器修改）"
-        }
-    }
-
     private fun syncValuesFromPrefs() {
         isSyncingUi = true
 
@@ -532,9 +339,7 @@ class MrubyimeSettingsActivity : Activity() {
     private fun normalizeButtonWidths() {
         val ids = listOf(
             R.id.btn_enable_ime, R.id.btn_select_ime,
-            R.id.btn_dict_import, R.id.btn_dict_export, R.id.btn_dict_reset,
-            R.id.btn_layout_import, R.id.btn_layout_export, R.id.btn_layout_install_dir,
-            R.id.btn_layout_reset, R.id.btn_layout_open_editor
+            R.id.btn_dict_import, R.id.btn_dict_export, R.id.btn_dict_reset
         )
         val density = resources.displayMetrics.density
         val buttons = ids.map { findViewById<Button>(it) }
@@ -592,8 +397,7 @@ class MrubyimeSettingsActivity : Activity() {
             R.id.sec_system_title,
             R.id.sec_display_title,
             R.id.sec_inline_title,
-            R.id.sec_dict_title,
-            R.id.sec_layout_title
+            R.id.sec_dict_title
         ).forEach { id ->
             findViewById<TextView>(id).setTextColor(if (true) black else white)
         }
@@ -614,7 +418,7 @@ class MrubyimeSettingsActivity : Activity() {
             }
         }
 
-        listOf(tvLayoutPath, tvLayoutStatus, tvDictInfo, tvDictStatus).forEach {
+        listOf(tvDictInfo, tvDictStatus).forEach {
             it.setTextColor(greySub)
         }
 
@@ -636,12 +440,7 @@ class MrubyimeSettingsActivity : Activity() {
             R.id.btn_select_ime,
             R.id.btn_dict_import,
             R.id.btn_dict_export,
-            R.id.btn_dict_reset,
-            R.id.btn_layout_import,
-            R.id.btn_layout_export,
-            R.id.btn_layout_install_dir,
-            R.id.btn_layout_reset,
-            R.id.btn_layout_open_editor
+            R.id.btn_dict_reset
         ).forEach { id ->
             findViewById<Button>(id).apply {
                 backgroundTintList = null
