@@ -95,37 +95,58 @@ for member in members:
     member.size = len(payload)        # type/mode/owner stay as p4a wrote them
     changed.append(member.name)
 
-# Non-Python assets (fonts, images, samples...) must be shipped too. Anything
-# under source.dir that is not .py / .pyc is added to the bundle so it lands in
+# Non-Python assets (fonts, images, samples...) ship too: anything under
+# source.dir that is not .py / .pyc is added to the bundle so it lands in
 # files/app/ next to the code -- Kivy's LabelBase needs a *real* path, which is
 # exactly what the unpacked bundle gives us.
+#
+# IMPORTANT: this tar is also the *base* we repack from, so a file that is
+# already a member must only have its bytes refreshed -- never be appended
+# again. Adding it unconditionally duplicated the 5 MB font on every run
+# (8 copies after 8 syncs, ~1.3 MB of extra APK each time).
+base_names = {m.name for m in members}
 extra_members = []
+added_dirs = set()
 for root, _dirs, files in os.walk(app):
     rel_dir = os.path.relpath(root, app)
-    if rel_dir == "." or "__pycache__" not in rel_dir:
-        for name in files:
-            if name.endswith((".py", ".pyc")):
-                continue
-            rel = name if rel_dir == "." else os.path.join(rel_dir, name)
-            with open(os.path.join(root, name), "rb") as fh:
-                data[rel] = fh.read()
-            # Make sure the parent directory entry exists first (jtar needs it).
-            parts = rel.split(os.sep)
-            for depth in range(1, len(parts)):
-                d = os.sep.join(parts[:depth])
-                if d and d not in data:
-                    m = tarfile.TarInfo(d)
-                    m.type = tarfile.DIRTYPE
-                    extra_members.append(m)
-            m = tarfile.TarInfo(rel)
-            m.type = tarfile.REGTYPE
-            m.size = len(data[rel])
-            extra_members.append(m)
+    if rel_dir != "." and "__pycache__" in rel_dir:
+        continue
+    for name in sorted(files):
+        if name.endswith((".py", ".pyc")):
+            continue
+        rel = name if rel_dir == "." else os.path.join(rel_dir, name)
+        with open(os.path.join(root, name), "rb") as fh:
+            data[rel] = fh.read()          # last write wins = newest bytes
+        if rel in base_names:
+            continue                       # already shipped, bytes refreshed
+        # Parent directory entries first (jtar needs them, once each).
+        parts = rel.split(os.sep)
+        for depth in range(1, len(parts)):
+            d = os.sep.join(parts[:depth])
+            if d and d not in base_names and d not in added_dirs:
+                m = tarfile.TarInfo(d)
+                m.type = tarfile.DIRTYPE
+                extra_members.append(m)
+                added_dirs.add(d)
+        m = tarfile.TarInfo(rel)
+        m.type = tarfile.REGTYPE
+        m.size = len(data[rel])
+        extra_members.append(m)
+        base_names.add(rel)
 
 # Deterministic output: identical sources -> identical sha1 -> the app skips
 # re-unpacking the 13 MB python bundle (PythonUtil.unpackAsset deletes the
 # whole app dir first, so a spurious sha1 change costs a full re-extract).
-for member in list(members) + extra_members:
+# Dedupe by name as well: an older bundle may already carry repeats.
+ordered = []
+seen = set()
+for member in members + extra_members:
+    if member.name in seen:
+        continue
+    seen.add(member.name)
+    ordered.append(member)
+
+for member in ordered:
     member.mtime = 0
     member.uid = member.gid = 0
     member.uname = member.gname = ""
@@ -134,7 +155,7 @@ import gzip
 raw = tempfile.NamedTemporaryFile(delete=False, suffix=".tar")
 raw.close()
 out = tarfile.open(raw.name, "w", format=tarfile.USTAR_FORMAT)
-for member in members + extra_members:
+for member in ordered:
     if member.isdir():
         out.addfile(member)
     else:
