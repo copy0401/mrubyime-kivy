@@ -1047,6 +1047,30 @@ ROW_5 = [
 
 ROWS = [ROW_1, ROW_2, ROW_3, ROW_4, ROW_5]
 
+
+def _upper_ascii(text):
+    """Uppercase ASCII letters only, leaving CJK/symbols untouched."""
+    return "".join(ch.upper() if "a" <= ch <= "z" else ch for ch in text)
+
+
+def _uppercase_row(row):
+    """Copy of a row with ASCII letters in the labels uppercased.
+
+    Only `label` changes: `value` stays lowercase so the mruby engine keeps
+    receiving the same code characters, and `sub`/`up` are already symbols.
+    """
+    out = []
+    for spec in row:
+        label = spec.get("label", "")
+        upper = _upper_ascii(label)
+        out.append(spec if upper == label else dict(spec, label=upper))
+    return out
+
+
+# Chinese mode shows capital letters (classic 嘸蝦米 look); English mode keeps
+# the lowercase rows. The bottom row is identical in both modes.
+CHINESE_ROWS = [_uppercase_row(row) for row in ROWS[:4]] + [ROW_5]
+
 # Shared bar keys: the game button (T-Rex runner) and the hide button.
 GAME_KEY = {"label": "", "action": "game", "emoji": "dino"}
 BACK_KEY = {"label": "KB", "action": "exit_game", "font_size": 14}
@@ -1333,9 +1357,12 @@ class ImeKeyboard(BoxLayout):
 
     def _rebuild_rows(self):
         self._rows_box.clear_widgets()
-        # ROWS[0] = number row (top), ROWS[-1] = toggle/space/enter (bottom).
+        # Chinese and English have their own row sets: Chinese uppercases the
+        # letter labels, English keeps them lowercase.
+        rows = ROWS if self.english else CHINESE_ROWS
+        # rows[0] = number row (top), rows[-1] = toggle/space/enter (bottom).
         # Vertical BoxLayout: first child added = topmost.
-        for row_index, row in enumerate(ROWS):
+        for row_index, row in enumerate(rows):
             entries = []
             for spec in row:
                 key = self._make_key(spec)

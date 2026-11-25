@@ -49,6 +49,15 @@ bar_h = dp(48)
 body_h = dp(240)
 ```
 
+**Chinese and English have separate row sets.** `ROWS` is the English set
+(lowercase letters); `CHINESE_ROWS` is derived from it by `_uppercase_row()`,
+which uppercases ASCII letters in `label` **only** — `value` stays lowercase so
+the mruby engine keeps receiving the same code characters, and `sub`/`up` are
+symbols that `.upper()` leaves alone. `_rebuild_rows()` picks
+`ROWS if self.english else CHINESE_ROWS`, so `set_english()` swaps the whole
+keyboard. To change one mode only, edit `ROWS` and the derivation (or give
+`CHINESE_ROWS` its own literal rows).
+
 Each row in `ROWS` is a list of key specs.  A spec is a dict with:
 
 | Key | Type | Meaning |
