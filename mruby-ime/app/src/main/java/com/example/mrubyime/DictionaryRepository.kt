@@ -130,7 +130,7 @@ object DictionaryRepository {
     }
 
     /**
-     * Loads the selected table. Falls back to the built-in 嘸蝦米 table when
+     * Loads the selected table. Falls back to the built-in 形碼 table when
      * the user file was deleted or the asset id no longer exists.
      */
     fun loadActive(context: Context): Pair<String, ByteArray>? {

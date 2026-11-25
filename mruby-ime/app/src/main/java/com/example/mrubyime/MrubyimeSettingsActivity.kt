@@ -246,7 +246,7 @@ class MrubyimeSettingsActivity : Activity() {
     private fun resetDictionary() {
         DictionaryRepository.restoreBuiltin(this)
         refreshDictList()
-        setDictStatus("✓ 已恢復內建嘸蝦米碼表")
+        setDictStatus("✓ 已恢復內建形碼碼表")
     }
 
     /** Rebuilds the radio list from the repository and checks the active entry. */

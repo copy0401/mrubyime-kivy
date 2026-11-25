@@ -82,7 +82,7 @@ class KeyboardView @JvmOverloads constructor(
     var selectedCandidateIndex: Int = 0
     var selkeys: String = "0123456789"
 
-    /** `%keyname` labels from the active .cin table (empty for the built-in 嘸蝦米). */
+    /** `%keyname` labels from the active .cin table (empty for the built-in 形碼). */
     private var dictKeyLabels: Map<String, String> = emptyMap()
 
     /** Hardware-modifier state of the last physical key event (drives `status` lamps). */

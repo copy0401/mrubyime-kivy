@@ -91,7 +91,7 @@ The keyboard layout is data, not Kotlin: `assets/keyboard_layout.rb` is evaluate
 
 ## 3. Generic `.cin` Engine Logic
 
-1. **Table-Driven, Not 嘸蝦米-Specific**: `boshiamy_engine.rb` parses `%ename`/`%cname`, `%selkey`, `%keyname` and `%chardef`. `@legal_keys` = `%keyname` keys ∪ every character in a code; `@table_max_code_len` = the longest code. The class/file name is kept only for JNI/prefs compatibility. A line starting with `#` is a comment.
+1. **Table-Driven, Not 形碼-Specific**: `boshiamy_engine.rb` parses `%ename`/`%cname`, `%selkey`, `%keyname` and `%chardef`. `@legal_keys` = `%keyname` keys ∪ every character in a code; `@table_max_code_len` = the longest code. The class/file name is kept only for JNI/prefs compatibility. A line starting with `#` is a comment.
 2. **Case Normalization**: Normalize input keycodes to lowercase before matching against the dictionary Hash table.
 3. **Max Code Length Enforcement**:
    - The engine's max code length is configurable over JNI (`setMaxCodeLen`): **the active table's longest code** when 「最大碼清空組字」 is on, **140** when off (default).
@@ -100,7 +100,7 @@ The keyboard layout is data, not Kotlin: `assets/keyboard_layout.rb` is evaluate
    - When the buffer reaches **≥ min(4, table max)** AND the lookup returns exactly 1 candidate AND `engine.canExtend()` is false (no legal key can extend it), automatically commit the candidate and reset the engine state ("滿4碼且唯一候選自動上屏"; **default off**, gated by `auto_commit`).
 5. **Dead-Code Auto-Clear** (two independent gates in `BoshiamyIME.onKeyPressed`):
    - **「死碼清空編碼區」** (`clear_dead_code`, default off): a **1–3 char** buffer with zero candidates AND `engine.deadPrefix()` true → clear. `dead_prefix` (engine, read-only) returns true only if **every one of the active table's legal keys appended to the buffer yields zero candidates**. A prefix that can still grow is preserved (e.g. `aad` → `aadb`/`aadk`/`aado`, `,,` → `,,f`); a provably dead one (`a'`, `[a`, `,aa`) is cleared. The trial looks only **one key ahead**.
-   - **「最大碼清空組字」** (`max_code_clear`, default off → max 140): when the buffer reaches the current max code length with zero candidates → clear. With the switch on (嘸蝦米: 5) a 5-code dead code wipes the box; with it off the buffer keeps growing and the code box shows only the last 6.
+   - **「最大碼清空組字」** (`max_code_clear`, default off → max 140): when the buffer reaches the current max code length with zero candidates → clear. With the switch on (max 5, as the built-in table) a 5-code dead code wipes the box; with it off the buffer keeps growing and the code box shows only the last 6.
 6. **Replaceable Tables**: `DictionaryRepository` resolves `builtin:boshiamy` (`assets/boshiamy.cin`), `builtin:<name>` (`assets/dicts/<name>.cin`) and `user:active` (`filesDir/dicts/active.cin`, mirrored to Android/data). `dict_id` in `boshiamy_settings` selects it; `onStartInputView` compares the id + file signature and hot-reloads. `%keyname` labels are applied to the key caps in Chinese mode (`KeyboardView.setDictLabels`) unless they are trivial variants of the key itself.
 
 ---
@@ -144,7 +144,7 @@ The keyboard layout is data, not Kotlin: `assets/keyboard_layout.rb` is evaluate
    - **StepScrollView (no pagination)**: candidate chips are placed in a single horizontally scrollable row. The view tracks the finger during dragging (`scrollBy`), settles onto full-page boundaries on release (`smoothScrollTo`), and **loops across page boundaries**. Single taps pass through to select candidates.
    - **Placeholder chip**: shown when there are no candidates. Carries the 3 dp selection bottom border in Chinese mode; plain in English mode.
    - Selected candidate: marked with a **3 dp bottom border** (white in Dark Mode, black in Light Mode) plus the theme ink; no full frame anywhere.
-   - Selection keys come from the active table's `%selkey`. While candidates are visible, a key whose absolute label matches (`selkeys[i]`) commits that candidate; an unmatched selection key is swallowed so the composition survives. **A `%selkey` value may also be a radical** (注音 `%selkey 1234567890` + `1 ㄅ`): such a key only selects when it can no longer extend the code (`engine.wouldExtend(key)` = `buffer+key` is a code or a prefix of one), so `2 8 4` builds ㄉㄚˋ and `284` then `1` selects. Non-code `%selkey` digits (嘸蝦米) always select. With no candidates, a digit that is not a legal key is committed as plain text.
+   - Selection keys come from the active table's `%selkey`. While candidates are visible, a key whose absolute label matches (`selkeys[i]`) commits that candidate; an unmatched selection key is swallowed so the composition survives. **A `%selkey` value may also be a radical** (注音 `%selkey 1234567890` + `1 ㄅ`): such a key only selects when it can no longer extend the code (`engine.wouldExtend(key)` = `buffer+key` is a code or a prefix of one), so `2 8 4` builds ㄉㄚˋ and `284` then `1` selects. Non-code `%selkey` digits (形碼) always select. With no candidates, a digit that is not a legal key is committed as plain text.
 7. **Listener Wiring / Property Shadowing**:
    - Avoid property shadowing when setting listeners on `KeyboardView`: assign outside `apply` or qualify explicitly with `this@BoshiamyIME`.
 

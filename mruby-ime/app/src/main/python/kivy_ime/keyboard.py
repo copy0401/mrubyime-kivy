@@ -118,9 +118,12 @@ def _bundled_font_paths():
 
 
 def _desktop_font_paths():
+    # Repo-relative fallbacks, so a fresh clone still previews on a desktop
+    # without the font being duplicated at the repository root.
+    pkg = os.path.dirname(os.path.abspath(__file__))
     return (
-        # host build & smoke tests
-        "/home/cc/Desktop/mrubyime_mini/unifont_t.otf",
+        os.path.join(os.path.dirname(pkg), "assets", "unifont_t.otf"),
+        os.path.join(pkg, "..", "..", "..", "..", "assets", "unifont_t.otf"),
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
     )
 
@@ -1077,7 +1080,7 @@ def _uppercase_row(row):
     return out
 
 
-# Chinese mode shows capital letters (classic 嘸蝦米 look); English mode keeps
+# Chinese mode shows capital letters (classic 形碼 look); English mode keeps
 # the lowercase rows. The bottom row is identical in both modes.
 CHINESE_ROWS = [_uppercase_row(row) for row in ROWS[:4]] + [ROW_5]
 

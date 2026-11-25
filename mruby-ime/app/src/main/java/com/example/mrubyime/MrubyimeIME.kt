@@ -150,7 +150,7 @@ class MrubyimeIME : InputMethodService() {
     // Active .cin table and the metadata derived from it. Everything below is
     // table-driven so 注音/倉頡/行列/大易/五筆… do not need Kotlin changes.
     private var dictId: String = DictionaryRepository.DEFAULT_ID
-    private var dictName: String = "嘸蝦米"
+    private var dictName: String = "形碼"
     private var dictKeynames: String = ""
     private var dictLegalKeys: String = "abcdefghijklmnopqrstuvwxyz,.'[]"
     private var dictMaxCode: Int = 5
@@ -366,7 +366,7 @@ class MrubyimeIME : InputMethodService() {
         DictionaryRepository.seedBuiltinCopy(this)
     }
 
-    /** `%keyname` labels for the keyboard; the built-in 嘸蝦米 table keeps A-Z. */
+    /** `%keyname` labels for the keyboard; the built-in 形碼 table keeps A-Z. */
     private fun dictKeyLabels(): Map<String, String> {
         if (dictId == DictionaryRepository.DEFAULT_ID) return emptyMap()
         val out = LinkedHashMap<String, String>()
@@ -696,7 +696,7 @@ class MrubyimeIME : InputMethodService() {
 
     /**
      * 「最大碼清空組字」 controls the engine's query limit. With the switch on it
-     * is the active table's longest code (5 for 嘸蝦米, 4 for 行列, …); off it
+     * is the active table's longest code (5 for the built-in table, 4 for 行列, …); off it
      * grows to 140 and the code box shows only the last 6 codes. The engine
      * stops resolving candidates once the buffer is past the limit.
      */
@@ -843,7 +843,7 @@ class MrubyimeIME : InputMethodService() {
         // `1 ㄅ`). While such a key can still extend the code (`2` → `28` → `284`)
         // it must extend, not select; it only picks a candidate when it can no
         // longer lead to a code. `%selkey` values that are not legal keys
-        // (嘸蝦米 `0123456789`) always select as before.
+        // (形碼 `0123456789`) always select as before.
         if (candidates.isNotEmpty()) {
             val idx = selkeys.indexOf(lowercaseCh)
             if (idx >= 0) {

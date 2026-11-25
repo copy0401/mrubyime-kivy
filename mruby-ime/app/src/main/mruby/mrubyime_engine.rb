@@ -97,7 +97,7 @@ class MrubyimeEngine
   SEG_BUDGET_CANON = 3000
 
   # Optional built-in phrases. Uncomment the ones you want (key = 
-  # concatenated 嘸蝦米 codes, verified against assets/mrubyime.cin).
+  # concatenated 形碼 codes, verified against assets/mrubyime.cin).
   BUILTIN_PHRASES = {
     # "ayyedn" => ["今天"],
     # "pnsgz" => ["你好"],
