@@ -2,10 +2,11 @@
 #  小蝦米輸入法 ─ 鍵盤佈局範本（Keyboard DSL v1）
 # ============================================================================
 #
-#  這是「可直接匯入」的最小起點：12 欄、5 列、中／英各一頁、淺色＋深色。
-#  改完存成 .rb，在 App 裡：
-#      設定 → 鍵盤佈局（Ruby DSL）→ 匯入 DSL…
-#  就會存成 layouts/keyboard.rb 並熱載入，不需要重新編譯 APK。
+#  ⚠️ 已失效：現行鍵盤是 Python/Kivy 前端，不再讀取本檔，
+#  本檔只作歷史參照（DSL 格式仍可用來驗證）。說明見 README_KIVY.md。
+#
+#      （還原此功能：把 build_mruby.sh 產生的 keyboard_layout_irep.c 接到
+#      KeyboardRenderer，並在設定頁恢復匯入入口。）
 #
 #  完整選項、顏色 token、動作、常見錯誤請看 docs/LAYOUT_DSL.md。
 #  裝置端是 mruby 3.3：不要用 Regexp、eval、require 或外部 gem。

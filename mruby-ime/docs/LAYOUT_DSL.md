@@ -1,5 +1,15 @@
 # 鍵盤佈局／配色設計包（Keyboard DSL v1）
 
+> **⚠️ 已失效（僅作歷史參照）。** 現行鍵盤已不由 Ruby DSL 渲染，而是
+> **Python/Kivy** 前端：`app/src/main/python/kivy_ime/keyboard.py`。實作說明見
+> **[README_KIVY.md](README_KIVY.md)**。
+>
+> 下面描述的「交回一個 `.rb` 就能匯入、熱載入、不需重新編譯」**已不成立**：
+> 設定頁的「鍵盤佈局（ruby dsl）」卡片已刪除，`layouts/keyboard.rb`
+> 熱載入已停用。`keyboard_dsl.rb` 的 Builder 與 `layoutFromSourceSerialized` JNI 仍存在，
+> 但只用來**驗證**格式；驗證通過的佈局不會顯示在螢幕上。
+
+
 這份文件是給「要設計鍵盤版面或配色、但不改 Kotlin」的人（或 AI）看的。
 對方只需要交回**一個 `.rb` 檔**，就能在 App 裡匯入、熱載入，不需要重新編譯 APK。
 

@@ -18,6 +18,16 @@
 - **滿 4 碼且唯一候選自動上屏（可開關，預設關）**：開啟後，當編碼達到 **4 碼（或碼表最長碼，取較小者）**、候選字唯一、且沒有任何合法鍵能再延長時，自動輸出該字元。`can_extend?` 會避免把 4 碼前綴誤判成完整碼。
 - **死碼清空編碼區（可開關，預設關）**：開啟後，按鍵若確定無候選（1–3 碼且**該碼表的任何合法鍵**都無法接續成碼），自動清空編碼區；關閉（預設）時死碼會保留在編碼區不自動清除。
 
+> [!IMPORTANT]
+> **狀態：以下「Ruby DSL → IR → View」章節（第 2 節～建構步驟前的 DSL 範例）已失效，僅保留作為歷史參照。**
+> 現行鍵盤是 **Python/Kivy** 前端（`app/src/main/python/kivy_ime/keyboard.py`），
+> 詳細說明見 **[README_KIVY.md](README_KIVY.md)**。
+> 失效的部分：DSL 版面／配色／字型／音效／狀態燈不再影響畫面；`layouts/keyboard.rb`
+> 使用者佈局熱載入與設定頁「鍵盤佈局（ruby dsl）」卡片都已移除。
+> 仍有效的部分：`.cin` 碼表（含匯入、`%keyname`／`%selkey` 語意）、mruby 引擎、設定頁的
+> 其他項目，以及 `docs/LAYOUT_DSL.md` 的 Builder 實作 仍用於**驗證**使用者匯入的 DSL。
+> 第 1 節（mruby 引擎）與建構、啟用步驟照常適用。
+
 ### 2. 5 行自定義虛擬鍵盤（Ruby DSL → IR → View 渲染與手勢手感）
 - **鍵盤由 Ruby DSL 執行期產生**：內建版面寫在 `keyboard_layout.rb`（`Keyboard.layout`），啟動時由 mruby 產生 IR JSON，再由 Kotlin `KeyboardRenderer` 建立一般的 `TextView` / `LinearLayout` 檢視樹；不再 inflate `view_keyboard.xml`，也沒有 Canvas 自繪。使用者匯入的版面走同一套 DSL。
 - **Space 鍵不顯示候選字**：Space 鍵面保持空白（不再把目前選取的候選字顯示在空白鍵上），候選字只出現在候選列；點擊 Space 仍會上屏目前選取的候選字，下滑仍可切換中英打。

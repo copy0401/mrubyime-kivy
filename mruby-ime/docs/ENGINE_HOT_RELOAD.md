@@ -1,4 +1,4 @@
-# 讓使用者修改 `mrubyime_engine.rb` 直接更新引擎
+# 讓使用者修改 `mrubyime_engine.rb` 直接更新引擎（已移除，僅供歷史參照）
 
 > **⚠️ 功能已移除（2026-11-22，APK 瘦身）。** 使用者自訂引擎整條鏈（`engine/engine.rb`、
 > `EngineFiles`、`EngineCheckService`/`EngineCheckClient`、JNI 的 `initFromSource`/
