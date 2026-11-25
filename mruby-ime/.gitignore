@@ -1,2 +1,20 @@
+# ---------------------------------------------------------------------------
+# Build output — never commit.  Gradle/CMake/p4a all regenerate these, and
+# committing them is what made this repo's history ~500 MB: the .git used to
+# carry .buildozer tarballs (hostpython3 30 MB, kivy 23 MB, openssl 17 MB) and
+# every release APK (20-25 MB each) inside app/build.
+# ---------------------------------------------------------------------------
 .buildozer/
 bin/
+.gradle/
+build/
+app/build/
+app/.cxx/
+.idea/
+*.apk
+.opencode_screen.png
+
+# ---------------------------------------------------------------------------
+# Local machine paths / toolchain (not portable, not needed to build)
+# ---------------------------------------------------------------------------
+local.properties
