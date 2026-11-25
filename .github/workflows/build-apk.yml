@@ -55,17 +55,24 @@ jobs:
           ruby-version: "3.3"
           bundler: none
 
+      - name: Set up Android SDK
+        # The runner ships an SDK, but no sdkmanager on PATH (the first run died
+        # with `sdkmanager: command not found` at 127). This action installs
+        # cmdline-tools and exports ANDROID_HOME / ANDROID_SDK_ROOT plus
+        # sdkmanager and apksigner on PATH, which the steps below rely on.
+        uses: android-actions/setup-android@v3
+
       - name: Install NDK
         run: |
           set -euo pipefail
           sdkmanager --install "ndk;${NDK_VERSION}"
-          ndk="$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}"
+          ndk="$ANDROID_HOME/ndk/${NDK_VERSION}"
           test -d "$ndk"
           echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ndk" >> "$GITHUB_ENV"
 
       - name: Point Gradle at the runner SDK
-        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > mruby-ime/local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > mruby-ime/local.properties
 
       - name: Install a debug keystore
         # app/build.gradle.kts only attaches the release signing config when
@@ -122,7 +129,7 @@ jobs:
           set -euo pipefail
           apk=app/build/outputs/apk/release/app-release.apk
           test -f "$apk"
-          build_tools="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
+          build_tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
           "$build_tools/apksigner" verify --print-certs "$apk"
 
       - name: Rename artifact
