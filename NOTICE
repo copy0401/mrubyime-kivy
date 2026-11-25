@@ -1,0 +1,105 @@
+小蝦米輸入法 (mrubyime-kivy)
+Copyright 2026 copy0401
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It includes the following third-party software. Each component remains under
+its own license; the Apache-2.0 grant above applies only to code that is not
+listed here.
+
+================================================================================
+mruby -- embeddable Ruby
+================================================================================
+  Location:  mruby-ime/mruby/
+  Copyright: Copyright (c) 2010- mruby developers
+  License:   MIT (see mruby-ime/mruby/LICENSE and mruby-ime/mruby/LEGAL)
+  Status:    vendored upstream tree, UNMODIFIED. Compiled by
+             mruby-ime/build_mruby.sh, which writes the build configuration to
+             mruby/build_config.rb at build time (a generated build input, not
+             part of this work).
+
+  MIT, with the exceptions recorded in mruby/LEGAL:
+    mruby/src/readfloat.c             -- public domain (Yasuhiro Matsumoto)
+    mruby/src/fmt_fp.c                -- public domain (Dave Hylands)
+    mrbgems/mruby-dir/src/Win/dirent.c -- MIT-like (Kevlin Henney)
+
+  The gems selected grams by build_mruby.sh (enum, array, hash, string, symbol,
+  range, numeric, kernel, proc, object-ext, sprintf, compiler) each declare
+  MIT in their mrbgem.rake.
+
+================================================================================
+Java Tar (jtar)
+================================================================================
+  Location:  mruby-ime/app/src/main/java/org/kamranzafar/jtar/
+  Copyright: Copyright 2012 Kamran Zafar
+  License:   Apache License, Version 2.0
+  Status:    UNMODIFIED
+
+================================================================================
+python-for-android / Kivy bootstrap
+================================================================================
+  Location:  mruby-ime/app/src/main/java/org/kivy/android/
+             mruby-ime/app/src/main/java/org/renpy/android/
+             mruby-ime/app/src/main/java/org/libsdl/app/
+  Copyright: Kivy organization and contributors; SDL contributors
+  License:   Apache License, Version 2.0; SDL shims follow the SDL zlib license
+  Status:    UNMODIFIED, with ONE addition:
+
+             org/libsdl/app/SDLImeBootstrap.java  -- new file, not from upstream
+             (org.libsdl.app.SDLImeBootstrap extends SDLActivity): exposes the
+             SDL view/lifecycle to an InputMethodService window and asks for
+             the translucent surface the IME draws over. Copyright 2026
+             copy0401, Apache-2.0, same license as this work.
+
+================================================================================
+Native libraries in mruby-ime/app/src/main/jniLibs/arm64-v8a/*.so
+================================================================================
+  Build outputs of python-for-android, the Android NDK and this project's
+  mruby cross-build -- not sources of this work. Different licenses inside one
+  APK, all permissive:
+
+    libpython3.14.so, libmain.so     CPython -- PSF License 2.0
+    libSDL2.so, libSDL2_image.so,
+    libSDL2_mixer.so, libSDL2_ttf.so SDL2 family -- zlib
+    libsqlite3.so                   SQLite -- public domain
+    libffi.so                       libffi -- MIT
+    libcrypto.so, libssl.so         OpenSSL -- Apache License, Version 2.0
+    libpybundle.so                  archive of the above plus this project's
+                                    Python sources (Apache-2.0, see LICENSE)
+    libmruby.a (linked into
+      libmrubyime.so)                mruby -- MIT
+
+================================================================================
+Bundled font
+================================================================================
+  Location: mruby-ime/app/src/main/python/assets/unifont_t.otf
+  GNU Unifont. Dual-licensed under the SIL Open Font License 1.1 and the GNU
+  GPL v2-or-later with a font embedding exception. Redistributed here under
+  the OFL 1.1 option, the one compatible with an Apache-2.0 application and the
+  one that permits bundling. This file is NOT covered by the Apache-2.0 grant.
+
+================================================================================
+What the license above covers
+================================================================================
+
+  Apache-2.0: every file in this repository that is not listed below -- the
+  Kotlin sources under mruby-ime/app/src/main/java/com/example/mrubyime/, the
+  Python sources under mruby-ime/app/src/main/python/, the C sources under
+  mruby-ime/app/src/main/cpp/ (including the *_irep.c files generated from our
+  own Ruby by build_mruby.sh), the Ruby sources under
+  mruby-ime/app/src/main/mruby/ and mruby-ime/app/src/main/assets/, the build
+  scripts, and the documentation.
+
+  Per files: the eight main source files carry the Apache-2.0 header (SPDX-style
+  block) at the top. Files generated by the build (engine_irep.c,
+  keyboard_dsl_irep.c, keyboard_layout_irep.c, keyboard_layout.json,
+  private.tar) are covered but cannot carry a comment; their sources do.
+
+  NOT covered -- the .cin input tables:
+    mruby-ime/app/src/main/assets/mrubyime.cin
+    mruby-ime/app/src/main/assets/dicts/
+  These are data, not code, and carry licenses from their own publishers.
+  mrubyime.cin contains no explicit grant and derives from the UniLiu /
+  Boshiamy table tradition. Shipping it inside an Apache-2.0 repository does not
+  relicense it, and this NOTICE makes no claim about its terms. Anyone
+  redistributing the APK should confirm the table's terms with its publisher.

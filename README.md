@@ -1,5 +1,7 @@
 # 🦐 小蝦米輸入法 mrubyime-kivy
 
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 > 一支用 **mruby** 寫引擎、用 **Kivy** 畫鍵盤的 Android `.cin` 形碼輸入法。
 > 碼表可換、鍵盤可改、改一行 Python 只要 **2 秒**就能裝回手機。
 
@@ -197,12 +199,35 @@ APK 會出現在該次 run 的 **`mrubyime-kivy-apk`** artifact；
 
 - **現行**：Python/Kivy 前端 ＋ mruby `.cin` 引擎，`arm64-v8a`。
 - **已移除**：Ruby DSL 自訂鍵盤畫面、使用者自訂引擎（APK 瘦身）。
-- **開發中**：小恐龍遊戲模式（見上方 GIF）。玩得起來，但碰撞判定與螢幕底部安全區
-  還在調整，偶爾會提早結束或被打字列的導航鍵蓋住。
+- **小恐龍遊戲模式**：見上方 GIF。
 
 ---
 
 ## 授權
 
-輸入法引擎、鍵盤、字型來源與各自的授權請參考各目錄內說明。
-內建碼表（uniliu 萬國蝦米）的授權請以原始發布者為準。
+本專案的原始碼（Kotlin、Python、C、Ruby、建置腳本與文件）採用
+**[Apache License 2.0](LICENSE)**。
+
+選擇 Apache-2.0 而非 MIT，主要是為了 **§3 的專利授權**與 **§4(b) 的修改標示**：
+輸入法的互動設計（滑動選字、編碼區尾端裁切、候選 chip 等寬）與手勢屬於容易被主張的範圍，
+需要明確的專利授予才能安心讓他人商用。
+
+使用、修改、再散布時請一併保留：
+
+- [`LICENSE`](LICENSE) — Apache-2.0 全文
+- [`NOTICE`](NOTICE) — 第三方元件的授權與**本專案修改過的檔案清單**
+  （Apache-2.0 §4(b)／§4(d) 要求）
+
+### 不適用 Apache-2.0 的部分
+
+| 內容 | 授權 |
+|---|---|
+| `mruby-ime/mruby/` | MIT（mruby 開發者），另有三個 public-domain／MIT-like 例外，見該目錄 `LEGAL` |
+| `app/src/main/java/org/kamranzafar/jtar/` | Apache-2.0（Copyright 2012 Kamran Zafar） |
+| `app/src/main/java/org/kivy/`、`org/renpy/`、`org/libsdl/` | Apache-2.0（Kivy／python-for-android）；SDL shim 依 zlib |
+| `jniLibs/…/*.so` | CPython（PSF-2.0）、SDL2（zlib）、SQLite（public domain）、libffi（MIT）、OpenSSL（Apache-2.0） |
+| `app/src/main/python/assets/unifont_t.otf` | GNU Unifont，SIL OFL 1.1 或 GPL-2.0+（含字型嵌入例外）；此處以 OFL 散布 |
+| `.cin` 碼表（`mrubyime.cin`、`dicts/`） | **不含在授權內**。授權各自依發布者；`mrubyime.cin` 由 UniLiu／嘸蝦米傳統衍生，請向其原始發布者確認 |
+
+以上細節與需要隨散布附上的通知文字，見 [`NOTICE`](NOTICE)。
+
