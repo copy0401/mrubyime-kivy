@@ -156,13 +156,27 @@ jobs:
       #                               /releases/latest/download/mrubyime-kivy.apk
       #   mrubyime-kivy-<sha7>.apk     which commit it is, for the artifact
       - name: Name the APK
+        id: apk
         run: |
           set -euo pipefail
           src=mruby-ime/app/build/outputs/apk/release/app-release.apk
           sha="${GITHUB_SHA::7}"
+          echo "BUILD_SHA=$sha" >> "$GITHUB_ENV"
+          # Build timestamp, Asia/Taipei, so the file name alone orders builds
+          # newest-last when the release assets are sorted alphabetically.
+          stamp="$(TZ=Asia/Taipei date +%Y%m%d-%H%M%S)"
+          # Filename varies per run, so the three assets (fixed name, stamped
+          # name, sha) never collide on the rolling 'latest' release.
+          stamped="mrubyime-kivy-${stamp}-${sha}.apk"
           install -D "$src" "dist/mrubyime-kivy.apk"
-          cp "dist/mrubyime-kivy.apk" "dist/mrubyime-kivy-${sha}.apk"
+          cp "dist/mrubyime-kivy.apk" "dist/$stamped"
           printf '%s\n' "$sha" > dist/sha.txt
+          {
+            echo "BUILD_STAMP=$stamp"
+            echo "STAMPED=$stamped"
+          } >> "$GITHUB_ENV"
+          echo "BUILD_STAMP=$stamp"
+          echo "STAMPED=$stamped"
           ls -l dist
 
       - name: Upload APK artifact
@@ -175,20 +189,48 @@ jobs:
 
       # A Release needs to write contents, and a fork's pull_request token is
       # read-only, so PRs stop here.
+      - name: Drop the previous build from the rolling release
+        # action-gh-release overwrites same-named assets but never deletes the
+        # ones a previous run left behind, and the stamped asset name changes
+        # on every build, so without this the release accumulates one APK pair
+        # per push and 'latest' stops meaning anything.
+        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Workflow-level `env` is not in the step environment here, so pass it.
+          LATEST_TAG: ${{ env.LATEST_TAG }}
+        run: |
+          set -euo pipefail
+          gh release view "$LATEST_TAG" > /dev/null 2>&1 || exit 0
+          while read -r name; do
+            [ -n "$name" ] || continue
+            case "$name" in
+              mrubyime-kivy.apk|mrubyime-kivy-*.apk)
+                gh release delete-asset "$LATEST_TAG" "$name" --yes
+                echo "removed old asset: $name"
+                ;;
+            esac
+          done < <(gh release view "$LATEST_TAG" --json assets -q '.assets[].name')
+
       - name: Publish to the rolling "latest" release
         if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.LATEST_TAG }}
-          name: "最新建置 (latest build)"
+          name: "最新建置 ${{ env.BUILD_STAMP }}"
           body: |
-            由 `main` 每次 push 自動產生，tag 固定為 `latest`（內容一律覆寫）。
+            **建置時間：${{ env.BUILD_STAMP }}（Asia/Taipei，UTC+8）**
 
-            - 提交：`${{ github.sha }}`
+            - 提交：`${{ github.sha }}`（短碼 `${{ env.BUILD_SHA }}`）
             - 訊息：${{ github.event.head_commit.message }}
             - 來源：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-            固定下載網址：
+            | 檔案 | 說明 |
+            |---|---|
+            | `mrubyime-kivy.apk` | 固定名稱，網址永遠不變 |
+            | `${{ env.STAMPED }}` | 同一份 APK，檔名含建置時間 |
+
+            固定下載網址（永遠是最新一次 main 建置）：
 
             ```
             https://github.com/${{ github.repository }}/releases/latest/download/mrubyime-kivy.apk
