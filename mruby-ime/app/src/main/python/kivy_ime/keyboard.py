@@ -1294,6 +1294,12 @@ class ImeKeyboard(BoxLayout):
             on_commit=self._emit, font_size=sp(24),
         )
         buffer_key.size_hint_x = 2.0 / self.COLUMNS
+        # One line, always. `shorten` makes Kivy clip instead of wrapping, and
+        # `shorten_from="left"` keeps the *tail* -- a long code reads "…DEFGH"
+        # rather than spilling onto a second line (the code area is only 2 of
+        # the 12 columns, so 6 wide capitals already overflow).
+        buffer_key._label.shorten = True
+        buffer_key._label.shorten_from = "left"
         buffer_key.bind(size=lambda w, _s: setattr(
             w._label, "text_size", (max(1, w.width - dp(8)), w.height)))
         buffer_key._label.halign = "left"
@@ -1321,16 +1327,37 @@ class ImeKeyboard(BoxLayout):
         hide.size_hint_x = 1.0 / self.COLUMNS
         self._bar_box.add_widget(hide)
 
-        self._refresh_chips()
+        self._refresh_bar()
 
     def _refresh_bar(self):
         if self.english:
             return
         if self._buffer_label is not None:
-            self._buffer_label.text = self.buffer.upper()[-6:]
+            # Show only the tail that actually fits the code box, so the box
+            # never wraps onto a second line and never wastes space on a "..."
+            # prefix. `_buffer_char_width()` is exact for Unifont (monospace);
+            # for a proportional font it uses the widest glyph, which errs on
+            # the safe side. The label's `shorten` stays as a guard.
+            text = self.buffer.upper()
+            box = self._buffer_key.width if self._buffer_key else 0
+            if box <= 1:
+                # Before the first layout pass; approximate from the window.
+                box = (self.width or Window.width) * 2.0 / self.COLUMNS
+            fit = max(1, int(max(1, box - dp(8)) // self._buffer_char_width()))
+            self._buffer_label.text = text[-fit:]
         if self._buffer_key is not None:
             self._buffer_key.value = self.buffer
         self._refresh_chips()
+
+    def _buffer_char_width(self):
+        """Advance of the widest glyph at the code-box font size, in pixels."""
+        width = getattr(self, "_buffer_char_w", 0)
+        if not width:
+            probe = CoreLabel(text="M", font_name=FONT_NAME, font_size=sp(24))
+            probe.refresh()
+            width = max(1.0, probe.get_extents("M")[0])
+            self._buffer_char_w = width
+        return width
 
     def _refresh_chips(self):
         if self._chips_box is None:

@@ -289,6 +289,33 @@ What it does:
 
 ---
 
+## The code box (`編碼區`) never wraps
+
+The buffer lives in a 2-of-12-column cell, so a long code used to wrap onto a
+second line. It now always stays on **one line and shows only the tail**:
+
+- `_refresh_bar()` trims the text to the last N characters, where
+  `N = floor((box_width − 8 dp) / char_width)`.
+- `_buffer_char_width()` measures the widest glyph once with a `CoreLabel` at
+  the box's own font size (`sp(24)`). Unifont is monospace, so the count is
+  exact on device (~6–7 codes); a proportional font errs on the safe side.
+- The label also keeps `shorten=True` / `shorten_from="left"` as a guard: if
+  the estimate is ever wrong the label clips with `...` instead of wrapping.
+
+There is deliberately **no ellipsis** in the normal case — `...` costs 3
+character widths out of ~7, so `...L;'` showed only 4 codes where `GHKL;'`
+shows 6. Tapping the box still commits the **whole** buffer (`_buffer_key.value`
+is set to the full text, not the visible tail).
+
+Alternatives considered, if the tail-only look ever stops being enough:
+
+| Approach | Effect | Cost |
+|---|---|---|
+| Fixed last-N (e.g. 4) | guaranteed fit, no measurement | wastes room on a wide box |
+| Shrink the font to fit N | all N codes visible, no clipping | text gets small |
+| Horizontal scroll to the end | full text readable | no indicator, more code |
+| Widen the box (`buffer weight`) | more codes visible | steals candidate width |
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
