@@ -140,6 +140,49 @@ WebP launcher icons, minimal gembox (no `Set`/`Fiber`/`Enumerator`/`Time`/`Struc
 
 ---
 
+## CI (GitHub Actions)
+
+`.github/workflows/build-apk.yml` builds the arm64-v8a release APK on every push to
+`main`/`master`, every pull request, and on demand. The APK lands in the run's
+**mrubyime-kivy-apk** artifact as `app-release-<sha7>.apk`; pushing a `v*` tag also
+publishes a GitHub Release with it attached. Download it with:
+
+```bash
+gh run download <run-id> -n mrubyime-kivy-apk
+```
+
+The job runs the same two phases as `build_all.sh`, minus the phone: `build_mruby.sh`
+then `./gradlew assembleRelease`. Locally measured on a clean clone, 57 s + 18 s →
+a signed 23 MB APK.
+
+**It does not run buildozer, and it does not regenerate `private.tar`.** The bundle
+is p4a output and it is committed with its `.pyc` already inside (CPython **3.14**
+bytecode, magic `168627755`). No runner image has 3.14 and a p4a run needs ~1 GB of
+downloads plus CPython/SDL2/Kivy builds. So a Python-only edit must be pushed through
+`./sync_python.sh` locally, which rewrites `private.tar` — CI ships whatever bundle the
+commit carries. The Kotlin/mruby half *is* rebuilt from source every run, including
+`engine_irep.c` / `keyboard_*_irep.c` / `keyboard_layout.json` from their `.rb`, so CI
+can never produce stale bytecode the way a forgotten `build_mruby.sh` could.
+
+Things the workflow has to provide because they are not in the repo:
+
+- **NDK 30.0.16248370** — pinned by `ndkVersion` in `app/build.gradle.kts`. The runner
+  ships an SDK but no `sdkmanager` on PATH, so the step globs
+  `$ANDROID_SDK_ROOT/cmdline-tools/*/bin/sdkmanager` and exports `ANDROID_NDK_HOME` from
+  it. Not `android-actions/setup-android@v3`: it runs `sdkmanager --install tools`, and
+  that package no longer exists in SDK repository 2, so the action exits 1.
+- **`local.properties`** — untracked (it holds a machine path), so `sdk.dir` is written
+  at run time.
+- **A debug keystore** — `app/build.gradle.kts` attaches the release signing config only
+  when `~/.android/debug.keystore` exists; without it `assembleRelease` emits an
+  **unsigned** APK. The job generates a throwaway one with the default `android`/`android`
+  passwords the config expects, and `apksigner verify` fails the build if signing ever
+  stops applying. That key is not the one on the maintainer's phone, so `adb install -r`
+  of a CI APK over the locally installed app will refuse (signature mismatch) unless the
+  local app is uninstalled first.
+
+---
+
 ## Rollback
 
 ```bash
