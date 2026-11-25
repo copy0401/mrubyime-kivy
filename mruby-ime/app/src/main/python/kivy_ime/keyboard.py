@@ -387,8 +387,12 @@ class Key(Widget):
 
     def __init__(self, label="", value=None, action="code", sub_label="",
                  gestures=None, repeat=False, long_press=None,
-                 on_commit=None, font_size=None, emoji=False, **kwargs):
+                 on_commit=None, font_size=None, emoji=False, seams=True,
+                 **kwargs):
         super().__init__(**kwargs)
+        # Bar keys pass seams=False: the bar is one continuous plate, so a 1 dp
+        # outline around each button would draw a grid across it.
+        self.seams = seams
         # Only a code key picks up its label; backspace/space/enter
         # keep value=None so nothing can send their glyph.
         self.value = (label if value is None and action == "code" else value)
@@ -463,12 +467,18 @@ class Key(Widget):
             self._glyph.pos = self.pos
             self._glyph.size = self.size
 
-        self._seam_right.points = [self.right, self.y, self.right, self.top]
-        self._seam_bottom.points = [self.x, self.y, self.right, self.y]
-        self._seam_left.points = (
-            [self.x, self.y, self.x, self.top] if self.edge_left else [])
-        self._seam_top.points = (
-            [self.x, self.top, self.right, self.top] if self.edge_top else [])
+        if self.seams:
+            self._seam_right.points = [self.right, self.y, self.right, self.top]
+            self._seam_bottom.points = [self.x, self.y, self.right, self.y]
+            self._seam_left.points = (
+                [self.x, self.y, self.x, self.top] if self.edge_left else [])
+            self._seam_top.points = (
+                [self.x, self.top, self.right, self.top] if self.edge_top else [])
+        else:
+            self._seam_right.points = []
+            self._seam_bottom.points = []
+            self._seam_left.points = []
+            self._seam_top.points = []
 
     # -- feedback ------------------------------------------------------
     def _animate(self, target, duration):
@@ -1257,7 +1267,7 @@ class ImeKeyboard(BoxLayout):
         self._rebuild_bar()
         self._rebuild_rows()
 
-    def _make_key(self, spec, font_size=None):
+    def _make_key(self, spec, font_size=None, seams=True):
         return Key(
             label=spec.get("label", ""),
             # Deliberately NOT defaulting to the label: Key.__init__ decides
@@ -1275,6 +1285,7 @@ class ImeKeyboard(BoxLayout):
             on_commit=self._emit,
             font_size=font_size,
             emoji=spec.get("emoji", False),
+            seams=seams,
         )
 
     def _rebuild_bar(self):
@@ -1284,14 +1295,14 @@ class ImeKeyboard(BoxLayout):
 
         if self.english:
             for spec in ENGLISH_BAR:
-                key = self._make_key(spec, font_size=sp(14))
+                key = self._make_key(spec, font_size=sp(14), seams=False)
                 key.size_hint_x = 1.0 / self.COLUMNS
                 self._bar_box.add_widget(key)
             return
 
         buffer_key = Key(
             label=self.buffer.upper(), action="commit_buffer",
-            on_commit=self._emit, font_size=sp(24),
+            on_commit=self._emit, font_size=sp(24), seams=False,
         )
         buffer_key.size_hint_x = 2.0 / self.COLUMNS
         # One line, always. `shorten` makes Kivy clip instead of wrapping, and
@@ -1319,11 +1330,11 @@ class ImeKeyboard(BoxLayout):
         self._bar_box.add_widget(scroll)
 
         # T-Rex runner (tap = jump, swipe down = duck)
-        game = self._make_key(GAME_KEY, font_size=sp(14))
+        game = self._make_key(GAME_KEY, font_size=sp(14), seams=False)
         game.size_hint_x = 1.0 / self.COLUMNS
         self._bar_box.add_widget(game)
 
-        hide = self._make_key(HIDE_KEY, font_size=sp(14))
+        hide = self._make_key(HIDE_KEY, font_size=sp(14), seams=False)
         hide.size_hint_x = 1.0 / self.COLUMNS
         self._bar_box.add_widget(hide)
 

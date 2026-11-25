@@ -141,6 +141,23 @@ is `Chip("", selected=False)`.
 
 ---
 
+## Bar keys have no borders
+
+Every key in the Chinese and English bar is created with `seams=False`
+(`_rebuild_bar` → `_make_key(..., seams=False)` / `Key(..., seams=False)`), so
+`Key._sync()` leaves all four seam `Line` point lists empty. The bar therefore
+reads as **one continuous plate** — no 1 dp outline around the buffer box, the
+game button, `▼`, or any of the English `TAB / ^A / ^C / ^V / ⇧ ⇩ ⇦ ⇨ / DT / W`
+keys.
+
+Only the bar is affected: the letter/number rows keep their per-side seams.
+The game-mode bar (`_enter_game`) builds its own keys and is unchanged.
+
+To put the borders back, drop `seams=False` from `_rebuild_bar` (or pass
+`seams=True` for individual keys).
+
+---
+
 ## Gestures
 
 ```python
