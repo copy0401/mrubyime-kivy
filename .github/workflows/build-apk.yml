@@ -1,8 +1,14 @@
 name: Build APK
 
-# Builds the arm64-v8a release APK on every push / PR that touches the project and
-# uploads it as a downloadable artifact.  Pushing a `v*` tag additionally publishes
-# a GitHub Release with the APK attached.
+# Builds the arm64-v8a release APK.
+#
+# Triggers, and where the APK ends up:
+#   - push to main      -> updates the rolling "latest" GitHub Release
+#   - push of a v* tag  -> a new GitHub Release named after the tag
+#   - pull request      -> artifact only (a fork PR gets a read-only token, so it
+#                          must never try to publish)
+#   - workflow_dispatch -> artifact only
+# Every run also uploads the APK as a downloadable action artifact.
 #
 # What CI deliberately does NOT need:
 #   - python-for-android / buildozer.  app/src/main/assets/private.tar is the
@@ -15,11 +21,12 @@ name: Build APK
 #
 # What it does need, and provisions: ruby + rake (mruby is compiled from the
 # vendored source tree), NDK 30.0.x (the app pins ndkVersion 30.0.16248370) and a
-# debug keystore -- without one Gradle emits an *unsigned* release APK.
+# keystore -- without one Gradle emits an *unsigned* release APK.
 
 on:
   push:
     branches: [main, master]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -27,11 +34,20 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The repository default is "read" (checked: actions/permissions/workflow).
+# Publishing a Release writes contents, so ask for it explicitly and nowhere
+# else. Pull requests still get the fork's read-only token.
+permissions:
+  contents: write
+
 env:
   # Keep in sync with mruby-ime/app/build.gradle.kts (ndkVersion, compileSdk)
   # and mruby-ime/gradle/wrapper/gradle-wrapper.properties.
   NDK_VERSION: "30.0.16248370"
   JAVA_VERSION: "17"
+  # The rolling release updated by every push to main. A fixed tag keeps the
+  # release list to one entry instead of one per commit.
+  LATEST_TAG: "latest"
 
 jobs:
   build:
@@ -135,23 +151,55 @@ jobs:
           build_tools="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
           "$build_tools/apksigner" verify --print-certs "$apk"
 
-      - name: Rename artifact
+      # Two names, on purpose:
+      #   mrubyime-kivy.apk            fixed, so the Release always links
+      #                               /releases/latest/download/mrubyime-kivy.apk
+      #   mrubyime-kivy-<sha7>.apk     which commit it is, for the artifact
+      - name: Name the APK
         run: |
           set -euo pipefail
           src=mruby-ime/app/build/outputs/apk/release/app-release.apk
-          dst="app-release-${GITHUB_SHA::7}.apk"
-          install -D "$src" "dist/$dst"
-          ls -l "dist/$dst"
+          sha="${GITHUB_SHA::7}"
+          install -D "$src" "dist/mrubyime-kivy.apk"
+          cp "dist/mrubyime-kivy.apk" "dist/mrubyime-kivy-${sha}.apk"
+          printf '%s\n' "$sha" > dist/sha.txt
+          ls -l dist
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: mrubyime-kivy-apk
-          path: dist/*.apk
+          path: dist/mrubyime-kivy-*.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish Release APK
+      # A Release needs to write contents, and a fork's pull_request token is
+      # read-only, so PRs stop here.
+      - name: Publish to the rolling "latest" release
+        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.LATEST_TAG }}
+          name: "最新建置 (latest build)"
+          body: |
+            由 `main` 每次 push 自動產生，tag 固定為 `latest`（內容一律覆寫）。
+
+            - 提交：`${{ github.sha }}`
+            - 訊息：${{ github.event.head_commit.message }}
+            - 來源：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            固定下載網址：
+
+            ```
+            https://github.com/${{ github.repository }}/releases/latest/download/mrubyime-kivy.apk
+            ```
+
+            這是**以 debug key 簽章**的建置，可與手機上的舊版直接覆蓋安裝，但無法與正式的 debug keystore 版本互換。
+          files: dist/*.apk
+          make_latest: true
+          fail_on_unmatched_files: true
+
+      - name: Publish a tagged release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
